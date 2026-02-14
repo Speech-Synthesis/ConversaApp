@@ -1,9 +1,14 @@
+import 'dart:typed_data';
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:intl/intl.dart';
+import 'package:record/record.dart';
+import 'package:just_audio/just_audio.dart';
 import 'api_service.dart';
+
+import 'package:http/http.dart' as http;
 
 class ChatScreen extends StatefulWidget {
   const ChatScreen({super.key});
@@ -16,15 +21,19 @@ class _ChatScreenState extends State<ChatScreen> {
   final TextEditingController _textController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
   final List<Map<String, dynamic>> _messages = [];
+  final ApiService _apiService = ApiService(); // Single instance
+  final AudioRecorder _recorder = AudioRecorder();
+  final AudioPlayer _audioPlayer = AudioPlayer();
   bool _isTyping = false;
+  bool _isRecording = false;
 
   @override
-  void initState() {
-    super.initState();
-    // Add initial welcome message
-    Future.delayed(Duration.zero, () {
-      // Intentionally empty to show the new "Empty State" UI
-    });
+  void dispose() {
+    _textController.dispose();
+    _scrollController.dispose();
+    _recorder.dispose();
+    _audioPlayer.dispose();
+    super.dispose();
   }
 
   void _addMessage(String text, {required bool isUser}) {
@@ -51,6 +60,7 @@ class _ChatScreenState extends State<ChatScreen> {
     });
   }
 
+  // --- Text Chat Flow ---
   void _handleSubmitted(String text) async {
     if (text.trim().isEmpty) return;
     _textController.clear();
@@ -59,41 +69,169 @@ class _ChatScreenState extends State<ChatScreen> {
     setState(() {
       _isTyping = true;
     });
-
     _scrollToBottom();
-    
-    // Call Backend API
+
     try {
-      final apiService = ApiService();
-      // Use 'kIsWeb' to check platform if needed, or rely on ApiService logic
-      // For now, ApiService defaults to localhost (Web)
-      
-      final response = await apiService.sendMessage(text);
-      
+      final response = await _apiService.chat(text);
+
+      if (mounted) {
+        final responseText = response['response'] ?? 'No response from server.';
+        final style = response['style'];
+        _addMessage(responseText, isUser: false);
+
+        // Auto-play TTS for the response
+        _playTTS(responseText, style: style);
+      }
+    } catch (e) {
       if (mounted) {
         _addMessage(
-          response['response'] ?? 'No response from server.',
+          "Error connecting to backend: $e",
           isUser: false,
         );
       }
-    } catch (e) {
-      // Fallback to demo mode so UI is usable without backend
-      Future.delayed(const Duration(seconds: 1), () {
+    }
+  }
+
+  // --- Voice Recording Flow ---
+  Future<void> _startRecording() async {
+    try {
+      if (await _recorder.hasPermission()) {
+        // Record to a stream of bytes (web-compatible)
+        await _recorder.start(
+          const RecordConfig(
+            encoder: AudioEncoder.wav,
+            sampleRate: 16000,
+            numChannels: 1,
+          ),
+          path: '', // Empty path for web (uses in-memory)
+        );
+        setState(() {
+          _isRecording = true;
+        });
+      } else {
         if (mounted) {
-          _addMessage(
-            "I'm currently in UI Demo Mode (Backend unreachable).\n\nYour interface looks great!",
-            isUser: false,
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Microphone permission denied'),
+              backgroundColor: Colors.redAccent,
+            ),
           );
         }
+      }
+    } catch (e) {
+      print('Error starting recording: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Could not start recording: $e'),
+            backgroundColor: Colors.redAccent,
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _stopRecordingAndProcess() async {
+    try {
+      final path = await _recorder.stop();
+      setState(() {
+        _isRecording = false;
       });
+
+      if (path == null) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Recording failed — no audio captured')),
+          );
+        }
+        return;
+      }
+
+      // Show "Processing voice..." indicator
+      _addMessage("🎤 Voice message", isUser: true);
+      setState(() {
+        _isTyping = true;
+      });
+      _scrollToBottom();
+
+      // Read the recorded file as bytes
+      // On web, 'path' is a blob URL; we need to fetch it
+      Uint8List audioBytes;
+      try {
+        final uri = Uri.parse(path);
+        final response = await _fetchAudioBytes(uri);
+        audioBytes = response;
+      } catch (e) {
+        // Fallback: try reading directly
+        print('Error reading audio: $e');
+        if (mounted) {
+          setState(() { _isTyping = false; });
+          _addMessage("Could not process audio: $e", isUser: false);
+        }
+        return;
+      }
+
+      // Step 1: Transcribe audio → text
+      final transcribedText = await _apiService.transcribe(audioBytes);
+
+      if (mounted && transcribedText.isNotEmpty) {
+        // Update the user message with transcribed text
+        setState(() {
+          _messages.last['text'] = "🎤 \"$transcribedText\"";
+        });
+
+        // Step 2: Send transcribed text to chat
+        final chatResponse = await _apiService.chat(transcribedText);
+
+        if (mounted) {
+          final responseText = chatResponse['response'] ?? 'No response.';
+          final style = chatResponse['style'];
+          _addMessage(responseText, isUser: false);
+
+          // Step 3: Play TTS for the response
+          _playTTS(responseText, style: style);
+        }
+      } else if (mounted) {
+        setState(() { _isTyping = false; });
+        _addMessage("Could not transcribe audio. Please try again.", isUser: false);
+      }
+    } catch (e) {
+      setState(() {
+        _isRecording = false;
+        _isTyping = false;
+      });
+      if (mounted) {
+        _addMessage("Voice processing error: $e", isUser: false);
+      }
+    }
+  }
+
+  // Fetch audio bytes from a blob URL (web) or file path
+  Future<Uint8List> _fetchAudioBytes(Uri uri) async {
+    final response = await http.get(uri);
+    if (response.statusCode == 200) {
+      return response.bodyBytes;
+    }
+    throw Exception('Failed to fetch audio: ${response.statusCode}');
+  }
+
+  // --- TTS Playback ---
+  Future<void> _playTTS(String text, {String? style}) async {
+    try {
+      final audioUrl = await _apiService.synthesize(text, style: style);
+      await _audioPlayer.setUrl(audioUrl);
+      await _audioPlayer.play();
+    } catch (e) {
+      print('TTS playback error: $e');
+      // TTS is optional — don't block the UI if it fails
     }
   }
 
   @override
   Widget build(BuildContext context) {
     // Premium Dark Theme Colors
-    final surfaceColor = const Color(0xFF1E1E2E); // Deep distinct blue-black
-    final primaryColor = const Color(0xFF6C63FF); // Vibrant violet/purple
+    final surfaceColor = const Color(0xFF1E1E2E);
+    final primaryColor = const Color(0xFF6C63FF);
     final bubbleUser = primaryColor.withOpacity(0.2);
     final bubbleBot = const Color(0xFF2A2A3C);
 
@@ -101,7 +239,7 @@ class _ChatScreenState extends State<ChatScreen> {
       backgroundColor: surfaceColor,
       appBar: AppBar(
         elevation: 0,
-        backgroundColor: Colors.transparent, // Transparent for gradient
+        backgroundColor: Colors.transparent,
         flexibleSpace: Container(
           decoration: BoxDecoration(
             gradient: LinearGradient(
@@ -144,10 +282,9 @@ class _ChatScreenState extends State<ChatScreen> {
       ),
       body: Stack(
         children: [
-          // 1. Base Dark Background
           Container(color: surfaceColor),
 
-          // 2. Ambient Gradient Orbs (Mesh Gradient Effect)
+          // Ambient Gradient Orbs
           Positioned(
             top: -100,
             left: -100,
@@ -186,8 +323,8 @@ class _ChatScreenState extends State<ChatScreen> {
               ),
             ),
           ),
-          
-          // 3. Blur Filter for Glassmorphism Smoothness
+
+          // Blur Filter
           Positioned.fill(
             child: BackdropFilter(
               filter: ui.ImageFilter.blur(sigmaX: 30, sigmaY: 30),
@@ -195,48 +332,87 @@ class _ChatScreenState extends State<ChatScreen> {
             ),
           ),
 
-          // 4. Subtle Grid Pattern (Optional, for tech feel)
-          /*
-          Opacity(
-            opacity: 0.03,
-            child: Center(
-              child: Image.network(
-                'https://www.transparenttextures.com/patterns/cubes.png', 
-                repeat: ImageRepeat.repeat,
-              ),
-            ),
-          ),
-          */
-          
           Column(
-              children: [
-                Expanded(
-                  child: _messages.isEmpty
-                      ? _buildEmptyState(primaryColor)
-                      : ListView.builder(
-                          controller: _scrollController,
-                          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-                          itemCount: _messages.length + (_isTyping ? 1 : 0),
-                          itemBuilder: (context, index) {
-                            if (index == _messages.length) {
-                              return _buildTypingIndicator(bubbleBot);
-                            }
-                            final msg = _messages[index];
-                            return _buildMessageBubble(
-                              msg['text'],
-                              msg['isUser'],
-                              msg['timestamp'],
-                              bubbleUser,
-                              bubbleBot,
-                              primaryColor,
-                            );
-                          },
-                        ),
-                ),
-                _buildInputArea(surfaceColor, primaryColor),
-              ],
-            ),
+            children: [
+              Expanded(
+                child: _messages.isEmpty
+                    ? _buildEmptyState(primaryColor)
+                    : ListView.builder(
+                        controller: _scrollController,
+                        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                        itemCount: _messages.length + (_isTyping ? 1 : 0),
+                        itemBuilder: (context, index) {
+                          if (index == _messages.length) {
+                            return _buildTypingIndicator(bubbleBot);
+                          }
+                          final msg = _messages[index];
+                          return _buildMessageBubble(
+                            msg['text'],
+                            msg['isUser'],
+                            msg['timestamp'],
+                            bubbleUser,
+                            bubbleBot,
+                            primaryColor,
+                          );
+                        },
+                      ),
+              ),
+              _buildInputArea(surfaceColor, primaryColor),
+            ],
+          ),
+
+          // Recording overlay
+          if (_isRecording)
+            _buildRecordingOverlay(primaryColor),
         ],
+      ),
+    );
+  }
+
+  // --- Recording Overlay ---
+  Widget _buildRecordingOverlay(Color primaryColor) {
+    return Positioned(
+      bottom: 100,
+      left: 0,
+      right: 0,
+      child: Center(
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+          decoration: BoxDecoration(
+            color: Colors.redAccent.withOpacity(0.9),
+            borderRadius: BorderRadius.circular(30),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.redAccent.withOpacity(0.4),
+                blurRadius: 20,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 12,
+                height: 12,
+                decoration: const BoxDecoration(
+                  color: Colors.white,
+                  shape: BoxShape.circle,
+                ),
+              ).animate(onPlay: (c) => c.repeat(reverse: true))
+               .fade(duration: 600.ms, begin: 0.3, end: 1.0),
+              const SizedBox(width: 12),
+              Text(
+                'Recording... Release to send',
+                style: GoogleFonts.outfit(
+                  color: Colors.white,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ],
+          ),
+        ).animate().fade().slideY(begin: 0.3, end: 0),
       ),
     );
   }
@@ -270,7 +446,7 @@ class _ChatScreenState extends State<ChatScreen> {
             
             const SizedBox(height: 8),
             Text(
-              "Experience the power of AI conversation",
+              "Type a message or hold the mic to speak",
               style: GoogleFonts.outfit(
                 color: Colors.white54,
                 fontSize: 14,
@@ -279,7 +455,6 @@ class _ChatScreenState extends State<ChatScreen> {
             
             const SizedBox(height: 48),
             
-            // Suggestion Chips
             Wrap(
               spacing: 12,
               runSpacing: 12,
@@ -428,12 +603,6 @@ class _ChatScreenState extends State<ChatScreen> {
   Widget _buildInputArea(Color surfaceColor, Color primaryColor) {
     return Container(
       padding: const EdgeInsets.all(20),
-      // decoration: BoxDecoration(
-      //   color: surfaceColor,
-      //   border: Border(
-      //     top: BorderSide(color: Colors.white.withOpacity(0.05)),
-      //   ),
-      // ),
       child: Row(
         children: [
           Expanded(
@@ -458,21 +627,48 @@ class _ChatScreenState extends State<ChatScreen> {
             ),
           ),
           const SizedBox(width: 12),
+          // Mic button — hold to record
           GestureDetector(
+            onLongPressStart: (_) => _startRecording(),
+            onLongPressEnd: (_) => _stopRecordingAndProcess(),
             onTap: () {
-              // Placeholder for voice input logic
               ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Voice input coming soon!')),
+                SnackBar(
+                  content: Text(
+                    'Hold the mic button to record',
+                    style: GoogleFonts.outfit(),
+                  ),
+                  backgroundColor: const Color(0xFF2A2A3C),
+                  duration: const Duration(seconds: 2),
+                ),
               );
             },
-            child: Container(
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 200),
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.05),
+                color: _isRecording
+                    ? Colors.redAccent.withOpacity(0.3)
+                    : Colors.white.withOpacity(0.05),
                 shape: BoxShape.circle,
-                border: Border.all(color: Colors.white10),
+                border: Border.all(
+                  color: _isRecording ? Colors.redAccent : Colors.white10,
+                ),
+                boxShadow: _isRecording
+                    ? [
+                        BoxShadow(
+                          color: Colors.redAccent.withOpacity(0.4),
+                          blurRadius: 15,
+                          offset: const Offset(0, 2),
+                        ),
+                      ]
+                    : [],
               ),
-              child: const Icon(Icons.mic_rounded, color: Colors.white70, size: 22),
+              child: Icon(
+                _isRecording ? Icons.mic : Icons.mic_rounded,
+                color: _isRecording ? Colors.redAccent : Colors.white70,
+                size: 22,
+              ),
             ),
           ),
           const SizedBox(width: 12),
@@ -503,4 +699,3 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 }
-
