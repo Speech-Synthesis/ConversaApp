@@ -38,6 +38,9 @@ dependencies:
   google_fonts: ^8.0.1
   flutter_animate: ^4.5.2
   intl: ^0.20.2
+  uuid: ^4.3.3
+  record: ^5.2.1
+  just_audio: ^0.9.46
 
 dev_dependencies:
   flutter_test:
