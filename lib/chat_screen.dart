@@ -72,7 +72,7 @@ class _ChatScreenState extends State<ChatScreen> {
       
       if (mounted) {
         _addMessage(
-          "Error: Connecting to ConversaVoice Backend failed.\n\n[Demo Mode] I can see your message: \"$text\"\nThe UI is fully functional!",
+          response['response'] ?? 'No response from server.',
           isUser: false,
         );
       }
