@@ -11,9 +11,9 @@ class ApiService {
   Future<Map<String, dynamic>> sendMessage(String message) async {
     try {
       final response = await http.post(
-        Uri.parse('$_baseUrl/chat'),
+        Uri.parse('$_baseUrl/api/chat'),
         headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({'message': message}),
+        body: jsonEncode({'text': message}),
       );
 
       if (response.statusCode == 200) {
