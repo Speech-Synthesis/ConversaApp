@@ -82,12 +82,17 @@ class _ChatScreenState extends State<ChatScreen> {
         // Auto-play TTS for the response
         _playTTS(responseText, style: style);
       }
+    } on ApiException catch (e) {
+      if (mounted) {
+        if (e.statusCode == 404) {
+          _addMessage('[!] Chat endpoint not found. Is the backend deployed?', isUser: false);
+        } else {
+          _addMessage('[!] Server error: ${e.message}', isUser: false);
+        }
+      }
     } catch (e) {
       if (mounted) {
-        _addMessage(
-          "Error connecting to backend: $e",
-          isUser: false,
-        );
+        _addMessage('[!] Could not reach the server. Check your connection.', isUser: false);
       }
     }
   }
@@ -148,7 +153,7 @@ class _ChatScreenState extends State<ChatScreen> {
       }
 
       // Show "Processing voice..." indicator
-      _addMessage("🎤 Voice message", isUser: true);
+      _addMessage('Voice message', isUser: true);
       setState(() {
         _isTyping = true;
       });
@@ -172,28 +177,48 @@ class _ChatScreenState extends State<ChatScreen> {
       }
 
       // Step 1: Transcribe audio → text
-      final transcribedText = await _apiService.transcribe(audioBytes);
+      String transcribedText;
+      try {
+        transcribedText = await _apiService.transcribe(audioBytes);
+      } on ApiException catch (e) {
+        if (mounted) {
+          setState(() { _isTyping = false; });
+          if (e.statusCode == 404) {
+            _addMessage('[!] Voice transcription is not available on this server. Try typing your message instead.', isUser: false);
+          } else {
+            _addMessage('[!] Transcription error: ${e.message}', isUser: false);
+          }
+        }
+        return;
+      }
 
       if (mounted && transcribedText.isNotEmpty) {
         // Update the user message with transcribed text
         setState(() {
-          _messages.last['text'] = "🎤 \"$transcribedText\"";
+          _messages.last['text'] = '"$transcribedText"';
         });
 
         // Step 2: Send transcribed text to chat
-        final chatResponse = await _apiService.chat(transcribedText);
+        try {
+          final chatResponse = await _apiService.chat(transcribedText);
 
-        if (mounted) {
-          final responseText = chatResponse['response'] ?? 'No response.';
-          final style = chatResponse['style'];
-          _addMessage(responseText, isUser: false);
+          if (mounted) {
+            final responseText = chatResponse['response'] ?? 'No response.';
+            final style = chatResponse['style'];
+            _addMessage(responseText, isUser: false);
 
-          // Step 3: Play TTS for the response
-          _playTTS(responseText, style: style);
+            // Step 3: Play TTS for the response
+            _playTTS(responseText, style: style);
+          }
+        } on ApiException catch (e) {
+          if (mounted) {
+            setState(() { _isTyping = false; });
+            _addMessage('[!] Chat error: ${e.message}', isUser: false);
+          }
         }
       } else if (mounted) {
         setState(() { _isTyping = false; });
-        _addMessage("Could not transcribe audio. Please try again.", isUser: false);
+        _addMessage('Could not transcribe audio. Please try again.', isUser: false);
       }
     } catch (e) {
       setState(() {
@@ -201,7 +226,7 @@ class _ChatScreenState extends State<ChatScreen> {
         _isTyping = false;
       });
       if (mounted) {
-        _addMessage("Voice processing error: $e", isUser: false);
+        _addMessage('[!] Voice processing error. Please try again.', isUser: false);
       }
     }
   }
