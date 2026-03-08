@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'chat_screen.dart';
+import 'features/home/home_screen.dart';
 
 void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
   await dotenv.load(fileName: ".env");
   runApp(const ConversaVoiceApp());
 }
@@ -18,7 +19,7 @@ class ConversaVoiceApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         brightness: Brightness.dark,
-        scaffoldBackgroundColor: const Color(0xFF1E1E2E), // Premium dark background
+        scaffoldBackgroundColor: const Color(0xFF1E1E2E),
         primaryColor: const Color(0xFF6C63FF),
         colorScheme: const ColorScheme.dark(
           primary: Color(0xFF6C63FF),
@@ -33,7 +34,7 @@ class ConversaVoiceApp extends StatelessWidget {
         ),
         useMaterial3: true,
       ),
-      home: const ChatScreen(),
+      home: const HomeScreen(),
     );
   }
 }
