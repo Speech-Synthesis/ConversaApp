@@ -1,11 +1,11 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
 import 'config.dart';
 import 'error_handler.dart';
+import 'retry_helper.dart';
 import '../models/scenario.dart';
 import '../models/simulation.dart';
 import '../models/analysis.dart';
@@ -13,9 +13,20 @@ import '../models/voice.dart';
 
 /// Centralized HTTP client for the ConversaVoice backend.
 class ApiClient {
+  // Singleton pattern
+  static final ApiClient instance = ApiClient._internal();
+  ApiClient._internal();
+  factory ApiClient() => instance;
+
   static String get baseUrl => AppConfig.backendUrl;
 
   // ─── Helpers ──────────────────────────────────────────────
+
+  /// Get headers with API key for authentication
+  Map<String, String> get _headers => {
+        'Content-Type': 'application/json',
+        'X-API-Key': const String.fromEnvironment('API_SECRET_KEY', defaultValue: ''),
+      };
 
   /// Log request/response in debug mode only.
   void _log(String msg) {
@@ -36,7 +47,7 @@ class ApiClient {
       {Map<String, String>? query}) async {
     final uri = Uri.parse('$baseUrl$path').replace(queryParameters: query);
     _log('GET $uri');
-    return http.get(uri).timeout(AppConfig.defaultTimeout);
+    return http.get(uri, headers: _headers).timeout(AppConfig.defaultTimeout);
   }
 
   Future<http.Response> _post(String path,
@@ -45,7 +56,7 @@ class ApiClient {
     _log('POST $uri');
     return http
         .post(uri,
-            headers: {'Content-Type': 'application/json'},
+            headers: _headers,
             body: body != null ? jsonEncode(body) : null)
         .timeout(timeout ?? AppConfig.defaultTimeout);
   }
@@ -53,7 +64,7 @@ class ApiClient {
   Future<http.Response> _delete(String path) async {
     final uri = Uri.parse('$baseUrl$path');
     _log('DELETE $uri');
-    return http.delete(uri).timeout(AppConfig.defaultTimeout);
+    return http.delete(uri, headers: _headers).timeout(AppConfig.defaultTimeout);
   }
 
   // ─── Health ───────────────────────────────────────────────
@@ -107,6 +118,7 @@ class ApiClient {
       {String sessionId = '', String filename = 'recording.wav'}) async {
     final uri = Uri.parse('$baseUrl/api/transcribe');
     final request = http.MultipartRequest('POST', uri);
+    request.headers.addAll(_headers);
     if (sessionId.isNotEmpty) {
       request.fields['session_id'] = sessionId;
     }
@@ -137,29 +149,41 @@ class ApiClient {
 
   // ─── Simulation: Scenarios ────────────────────────────────
 
-  /// Load all scenarios, optionally filtered.
+  /// Load all scenarios, optionally filtered (with retry logic).
   Future<List<ScenarioSummary>> getScenarios(
       {String? category, String? difficulty}) async {
-    final query = <String, String>{};
-    if (category != null && category.isNotEmpty) query['category'] = category;
-    if (difficulty != null && difficulty.isNotEmpty) {
-      query['difficulty'] = difficulty;
-    }
-    final res = await _get('/api/simulation/scenarios',
-        query: query.isNotEmpty ? query : null);
-    final list = _decode(res) as List<dynamic>;
-    return list.map((j) => ScenarioSummary.fromJson(j)).toList();
+    return RetryHelper.retry(
+      () async {
+        final query = <String, String>{};
+        if (category != null && category.isNotEmpty) query['category'] = category;
+        if (difficulty != null && difficulty.isNotEmpty) {
+          query['difficulty'] = difficulty;
+        }
+        final res = await _get('/api/simulation/scenarios',
+            query: query.isNotEmpty ? query : null);
+        final list = _decode(res) as List<dynamic>;
+        return list.map((j) => ScenarioSummary.fromJson(j)).toList();
+      },
+      maxAttempts: 3,
+      shouldRetry: RetryHelper.isRetryableError,
+    );
   }
 
-  /// Get all scenario categories.
+  /// Get all scenario categories (with retry logic).
   Future<List<String>> getCategories() async {
-    final res = await _get('/api/simulation/categories');
-    final data = _decode(res);
-    if (data is Map && data.containsKey('categories')) {
-      return List<String>.from(data['categories']);
-    }
-    if (data is List) return List<String>.from(data);
-    return [];
+    return RetryHelper.retry(
+      () async {
+        final res = await _get('/api/simulation/categories');
+        final data = _decode(res);
+        if (data is Map && data.containsKey('categories')) {
+          return List<String>.from(data['categories']);
+        }
+        if (data is List) return List<String>.from(data);
+        return [];
+      },
+      maxAttempts: 2,
+      shouldRetry: RetryHelper.isRetryableError,
+    );
   }
 
   // ─── Simulation: Session Flow ─────────────────────────────
@@ -226,6 +250,7 @@ class ApiClient {
       {String filename = 'recording.wav'}) async {
     final uri = Uri.parse('$baseUrl/api/simulation/analyze-voice');
     final request = http.MultipartRequest('POST', uri);
+    request.headers.addAll(_headers);
     request.files.add(
         http.MultipartFile.fromBytes('audio', audioBytes, filename: filename));
 

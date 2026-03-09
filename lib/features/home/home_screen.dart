@@ -6,6 +6,8 @@ import 'package:flutter_animate/flutter_animate.dart';
 import '../../core/api_client.dart';
 import '../../core/config.dart';
 import '../simulation/scenario_list_screen.dart';
+import '../progress/progress_screen.dart';
+import '../settings/settings_screen.dart';
 
 /// Entry screen: health check → navigate to scenario list.
 class HomeScreen extends StatefulWidget {
@@ -59,6 +61,20 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  void _goToProgress() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const ProgressScreen()),
+    );
+  }
+
+  void _goToSettings() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const SettingsScreen()),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     const surface = Color(0xFF1E1E2E);
@@ -77,7 +93,7 @@ class _HomeScreenState extends State<HomeScreen> {
               height: 250,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: primary.withOpacity(0.12),
+                color: primary.withValues(alpha: 0.12),
               ),
             )
                 .animate(onPlay: (c) => c.repeat(reverse: true))
@@ -94,7 +110,7 @@ class _HomeScreenState extends State<HomeScreen> {
               height: 200,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: Colors.tealAccent.withOpacity(0.08),
+                color: Colors.tealAccent.withValues(alpha: 0.08),
               ),
             )
                 .animate(onPlay: (c) => c.repeat(reverse: true))
@@ -111,6 +127,15 @@ class _HomeScreenState extends State<HomeScreen> {
               child: Container(color: Colors.transparent),
             ),
           ),
+          // Settings button
+          Positioned(
+            top: 40,
+            right: 16,
+            child: IconButton(
+              icon: const Icon(Icons.settings_outlined, color: Colors.white70, size: 28),
+              onPressed: _goToSettings,
+            ),
+          ),
           // Content
           Center(
             child: SingleChildScrollView(
@@ -122,7 +147,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   Container(
                     padding: const EdgeInsets.all(28),
                     decoration: BoxDecoration(
-                      color: primary.withOpacity(0.12),
+                      color: primary.withValues(alpha: 0.12),
                       shape: BoxShape.circle,
                     ),
                     child: const Icon(Icons.headset_mic_rounded,
@@ -185,10 +210,10 @@ class _HomeScreenState extends State<HomeScreen> {
                           padding: const EdgeInsets.symmetric(
                               horizontal: 16, vertical: 8),
                           decoration: BoxDecoration(
-                            color: Colors.greenAccent.withOpacity(0.1),
+                            color: Colors.greenAccent.withValues(alpha: 0.1),
                             borderRadius: BorderRadius.circular(20),
                             border: Border.all(
-                                color: Colors.greenAccent.withOpacity(0.3)),
+                                color: Colors.greenAccent.withValues(alpha: 0.3)),
                           ),
                           child: Row(
                             mainAxisSize: MainAxisSize.min,
@@ -223,7 +248,7 @@ class _HomeScreenState extends State<HomeScreen> {
                               borderRadius: BorderRadius.circular(30),
                               boxShadow: [
                                 BoxShadow(
-                                  color: primary.withOpacity(0.4),
+                                  color: primary.withValues(alpha: 0.4),
                                   blurRadius: 15,
                                   offset: const Offset(0, 6),
                                 ),
@@ -250,6 +275,37 @@ class _HomeScreenState extends State<HomeScreen> {
                             .animate(delay: 200.ms)
                             .fadeIn()
                             .slideY(begin: 0.3, end: 0),
+                        const SizedBox(height: 16),
+                        GestureDetector(
+                          onTap: _goToProgress,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 24, vertical: 12),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withValues(alpha: 0.05),
+                              borderRadius: BorderRadius.circular(25),
+                              border: Border.all(color: Colors.white10),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Icon(Icons.assessment,
+                                    color: Colors.white70, size: 18),
+                                const SizedBox(width: 8),
+                                Text(
+                                  'My Progress',
+                                  style: GoogleFonts.outfit(
+                                    color: Colors.white70,
+                                    fontSize: 14,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        )
+                            .animate(delay: 300.ms)
+                            .fadeIn()
+                            .slideY(begin: 0.3, end: 0),
                       ],
                     )
                   else
@@ -258,10 +314,10 @@ class _HomeScreenState extends State<HomeScreen> {
                         Container(
                           padding: const EdgeInsets.all(20),
                           decoration: BoxDecoration(
-                            color: Colors.redAccent.withOpacity(0.08),
+                            color: Colors.redAccent.withValues(alpha: 0.08),
                             borderRadius: BorderRadius.circular(16),
                             border: Border.all(
-                                color: Colors.redAccent.withOpacity(0.3)),
+                                color: Colors.redAccent.withValues(alpha: 0.3)),
                           ),
                           child: Column(
                             children: [
@@ -305,7 +361,7 @@ class _HomeScreenState extends State<HomeScreen> {
                             padding: const EdgeInsets.symmetric(
                                 horizontal: 24, vertical: 12),
                             decoration: BoxDecoration(
-                              color: Colors.white.withOpacity(0.05),
+                              color: Colors.white.withValues(alpha: 0.05),
                               borderRadius: BorderRadius.circular(25),
                               border: Border.all(color: Colors.white10),
                             ),

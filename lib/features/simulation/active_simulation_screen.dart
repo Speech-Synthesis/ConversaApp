@@ -1,31 +1,29 @@
+import 'dart:async';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 
-import '../../core/api_client.dart';
 import '../../core/error_handler.dart';
 import '../../models/scenario.dart';
-import '../../models/simulation.dart';
 import '../../widgets/emotion_badge.dart';
 import '../../widgets/message_bubble.dart';
-import '../../features/voice/voice_service.dart';
+import '../../providers/api_provider.dart';
 import 'feedback_screen.dart';
 
 /// Live simulation conversation screen.
-class ActiveSimulationScreen extends StatefulWidget {
+class ActiveSimulationScreen extends ConsumerStatefulWidget {
   final ScenarioSummary scenario;
 
   const ActiveSimulationScreen({super.key, required this.scenario});
 
   @override
-  State<ActiveSimulationScreen> createState() => _ActiveSimulationScreenState();
+  ConsumerState<ActiveSimulationScreen> createState() => _ActiveSimulationScreenState();
 }
 
-class _ActiveSimulationScreenState extends State<ActiveSimulationScreen> {
-  final ApiClient _api = ApiClient();
-  late final VoiceService _voice;
+class _ActiveSimulationScreenState extends ConsumerState<ActiveSimulationScreen> {
   final TextEditingController _textController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
 
@@ -46,11 +44,12 @@ class _ActiveSimulationScreenState extends State<ActiveSimulationScreen> {
   bool _isRecording = false;
   bool _conversationComplete = false;
   String? _error;
+  final int _timeoutSeconds = 90;
+  int _elapsedSeconds = 0;
 
   @override
   void initState() {
     super.initState();
-    _voice = VoiceService(_api);
     _startSimulation();
   }
 
@@ -58,7 +57,6 @@ class _ActiveSimulationScreenState extends State<ActiveSimulationScreen> {
   void dispose() {
     _textController.dispose();
     _scrollController.dispose();
-    _voice.dispose();
     super.dispose();
   }
 
@@ -68,7 +66,7 @@ class _ActiveSimulationScreenState extends State<ActiveSimulationScreen> {
       _error = null;
     });
     try {
-      final result = await _api.startSimulation(widget.scenario.scenarioId);
+      final result = await ref.read(apiClientProvider).startSimulation(widget.scenario.scenarioId);
       if (mounted) {
         setState(() {
           _sessionId = result.sessionId;
@@ -84,7 +82,7 @@ class _ActiveSimulationScreenState extends State<ActiveSimulationScreen> {
         });
         _scrollToBottom();
         // Play customer opening message
-        _voice.synthesizeAndPlay(result.openingMessage,
+        ref.read(voiceServiceProvider).synthesizeAndPlay(result.openingMessage,
             style: result.prosody['style']?.toString(),
             pitch: result.prosody['pitch']?.toString(),
             rate: result.prosody['rate']?.toString());
@@ -116,6 +114,7 @@ class _ActiveSimulationScreenState extends State<ActiveSimulationScreen> {
 
     setState(() {
       _sending = true;
+      _elapsedSeconds = 0;
       _messages.add({
         'text': text,
         'isTrainee': true,
@@ -125,11 +124,29 @@ class _ActiveSimulationScreenState extends State<ActiveSimulationScreen> {
     });
     _scrollToBottom();
 
+    // Start a timer to track elapsed seconds
+    final timer = Stream.periodic(const Duration(seconds: 1), (count) => count + 1)
+        .take(_timeoutSeconds)
+        .listen((seconds) {
+      if (mounted && _sending) {
+        setState(() => _elapsedSeconds = seconds);
+      }
+    });
+
     try {
-      final turn = await _api.sendResponse(_sessionId!, text);
+      final turn = await ref.read(apiClientProvider).sendResponse(_sessionId!, text).timeout(
+        Duration(seconds: _timeoutSeconds),
+        onTimeout: () {
+          throw TimeoutException('Request took too long');
+        },
+      );
+      
+      timer.cancel();
+      
       if (mounted) {
         setState(() {
           _sending = false;
+          _elapsedSeconds = 0;
           _currentEmotion = turn.emotionState;
           _emotionChanged = turn.emotionChanged;
           _turnNumber = turn.turnNumber;
@@ -147,7 +164,7 @@ class _ActiveSimulationScreenState extends State<ActiveSimulationScreen> {
         _scrollToBottom();
 
         // Play customer response
-        _voice.synthesizeAndPlay(turn.customerMessage,
+        ref.read(voiceServiceProvider).synthesizeAndPlay(turn.customerMessage,
             style: turn.prosody['style']?.toString(),
             pitch: turn.prosody['pitch']?.toString(),
             rate: turn.prosody['rate']?.toString());
@@ -159,16 +176,33 @@ class _ActiveSimulationScreenState extends State<ActiveSimulationScreen> {
           if (mounted) _showEndDialog(autoEnd: true);
         }
       }
-    } on ApiException catch (e) {
+    } on TimeoutException catch (_) {
+      timer.cancel();
       if (mounted) {
-        setState(() { _sending = false; });
+        setState(() {
+          _sending = false;
+          _elapsedSeconds = 0;
+        });
+        _showTimeoutDialog();
+      }
+    } on ApiException catch (e) {
+      timer.cancel();
+      if (mounted) {
+        setState(() {
+          _sending = false;
+          _elapsedSeconds = 0;
+        });
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(e.message), backgroundColor: Colors.redAccent),
         );
       }
     } catch (e) {
+      timer.cancel();
       if (mounted) {
-        setState(() { _sending = false; });
+        setState(() {
+          _sending = false;
+          _elapsedSeconds = 0;
+        });
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
               content: Text('Failed to send response'),
@@ -185,7 +219,7 @@ class _ActiveSimulationScreenState extends State<ActiveSimulationScreen> {
       if (_isRecording) {
         await _stopRecordingAndProcess();
       } else {
-        final hasPerm = await _voice.hasPermission();
+        final hasPerm = await ref.read(voiceServiceProvider).hasPermission();
         debugPrint('[Mic] hasPermission=$hasPerm');
         if (!hasPerm) {
           if (mounted) {
@@ -197,7 +231,7 @@ class _ActiveSimulationScreenState extends State<ActiveSimulationScreen> {
           }
           return;
         }
-        await _voice.startRecording();
+        await ref.read(voiceServiceProvider).startRecording();
         debugPrint('[Mic] Recording started');
         if (mounted) setState(() => _isRecording = true);
       }
@@ -216,7 +250,7 @@ class _ActiveSimulationScreenState extends State<ActiveSimulationScreen> {
   }
 
   Future<void> _stopRecordingAndProcess() async {
-    final result = await _voice.stopRecording();
+    final result = await ref.read(voiceServiceProvider).stopRecording();
     if (mounted) setState(() => _isRecording = false);
 
     if (result == null || result.bytes.isEmpty) {
@@ -245,7 +279,7 @@ class _ActiveSimulationScreenState extends State<ActiveSimulationScreen> {
     try {
       // Keep audio bytes for voice analysis after transcription
       final audioBytes = result.bytes;
-      final transcribed = await _voice.transcribe(
+      final transcribed = await ref.read(voiceServiceProvider).transcribe(
         result.bytes,
         sessionId: _sessionId ?? '',
         filename: result.filename,
@@ -255,7 +289,7 @@ class _ActiveSimulationScreenState extends State<ActiveSimulationScreen> {
         // Reset _sending so _sendMessage's guard doesn't block
         if (mounted) setState(() { _sending = false; });
         // Track the message index so we can update it with voice analysis
-        final msgIndex = _messages.length; // next trainee message will be at this index
+        final msgIndex = _messages.length;
         await _sendMessage(transcribed);
         // Async voice analysis — updates the badge once result arrives
         _analyzeAndAttachTone(audioBytes, msgIndex);
@@ -287,7 +321,7 @@ class _ActiveSimulationScreenState extends State<ActiveSimulationScreen> {
   /// Analyze voice and attach tone badge to the trainee message at [msgIndex].
   Future<void> _analyzeAndAttachTone(Uint8List audioBytes, int msgIndex) async {
     try {
-      final analysis = await _voice.analyzeVoice(audioBytes);
+      final analysis = await ref.read(voiceServiceProvider).analyzeVoice(audioBytes);
       if (analysis != null && mounted && msgIndex < _messages.length) {
         setState(() {
           _messages[msgIndex]['voiceTone'] = analysis.primaryEmotion;
@@ -340,7 +374,7 @@ class _ActiveSimulationScreenState extends State<ActiveSimulationScreen> {
   Future<void> _endSession(bool resolved) async {
     if (_sessionId == null) return;
     try {
-      await _api.endSimulation(_sessionId!, resolutionAchieved: resolved);
+      await ref.read(apiClientProvider).endSimulation(_sessionId!, resolutionAchieved: resolved);
       if (mounted) {
         Navigator.pushReplacement(
           context,
@@ -348,6 +382,7 @@ class _ActiveSimulationScreenState extends State<ActiveSimulationScreen> {
             builder: (_) => FeedbackScreen(
               sessionId: _sessionId!,
               scenarioTitle: widget.scenario.title,
+              scenario: widget.scenario,
             ),
           ),
         );
@@ -361,11 +396,64 @@ class _ActiveSimulationScreenState extends State<ActiveSimulationScreen> {
             builder: (_) => FeedbackScreen(
               sessionId: _sessionId!,
               scenarioTitle: widget.scenario.title,
+              scenario: widget.scenario,
             ),
           ),
         );
       }
     }
+  }
+
+  Future<void> _cancelCurrentOperation() async {
+    if (mounted) {
+      setState(() {
+        _sending = false;
+        _elapsedSeconds = 0;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Operation cancelled'),
+          backgroundColor: Colors.orange,
+          duration: Duration(seconds: 2),
+        ),
+      );
+    }
+  }
+
+  void _showTimeoutDialog() {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF2A2A3C),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Text(
+          'Request Timed Out',
+          style: GoogleFonts.outfit(color: Colors.white, fontWeight: FontWeight.w600),
+        ),
+        content: Text(
+          'The simulation did not respond within $_timeoutSeconds seconds. Would you like to retry or end the session?',
+          style: GoogleFonts.outfit(color: Colors.white70),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.pop(ctx);
+              _showEndDialog();
+            },
+            child: Text('End Session',
+                style: GoogleFonts.outfit(color: Colors.redAccent)),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(ctx);
+              // User can try sending another message
+            },
+            child: Text('Continue',
+                style: GoogleFonts.outfit(color: Colors.greenAccent)),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -466,7 +554,7 @@ class _ActiveSimulationScreenState extends State<ActiveSimulationScreen> {
               if (_detectedTechniques.isNotEmpty || _detectedIssues.isNotEmpty)
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                  color: const Color(0xFF2A2A3C).withOpacity(0.5),
+                  color: const Color(0xFF2A2A3C).withValues(alpha: 0.5),
                   child: Row(
                     children: [
                       if (_detectedTechniques.isNotEmpty)
@@ -523,6 +611,13 @@ class _ActiveSimulationScreenState extends State<ActiveSimulationScreen> {
 
           // Recording overlay
           if (_isRecording) _buildRecordingOverlay(),
+          
+          // Loading/Sending overlay with cancel button
+          if (_sending) _buildLoadingOverlay(),
+
+          // Real-time coaching hints overlay
+          if (!_sending && !_isRecording && _turnNumber > 0)
+            _buildCoachingHintsOverlay(primary),
         ],
       ),
     );
@@ -533,9 +628,9 @@ class _ActiveSimulationScreenState extends State<ActiveSimulationScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(
-        color: c.withOpacity(0.1),
+        color: c.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: c.withOpacity(0.3)),
+        border: Border.all(color: c.withValues(alpha: 0.3)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -599,11 +694,11 @@ class _ActiveSimulationScreenState extends State<ActiveSimulationScreen> {
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
           decoration: BoxDecoration(
-            color: Colors.redAccent.withOpacity(0.9),
+            color: Colors.redAccent.withValues(alpha: 0.9),
             borderRadius: BorderRadius.circular(30),
             boxShadow: [
               BoxShadow(
-                  color: Colors.redAccent.withOpacity(0.4),
+                  color: Colors.redAccent.withValues(alpha: 0.4),
                   blurRadius: 20,
                   offset: const Offset(0, 4)),
             ],
@@ -632,6 +727,93 @@ class _ActiveSimulationScreenState extends State<ActiveSimulationScreen> {
     );
   }
 
+  Widget _buildLoadingOverlay() {
+    final remainingSeconds = _timeoutSeconds - _elapsedSeconds;
+    return Positioned(
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      child: Container(
+        color: Colors.black.withValues(alpha: 0.7),
+        child: Center(
+          child: Container(
+            margin: const EdgeInsets.symmetric(horizontal: 40),
+            padding: const EdgeInsets.all(24),
+            decoration: BoxDecoration(
+              color: const Color(0xFF2A2A3C),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.3),
+                  blurRadius: 20,
+                  offset: const Offset(0, 10),
+                ),
+              ],
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const SizedBox(
+                  width: 48,
+                  height: 48,
+                  child: CircularProgressIndicator(
+                    color: Color(0xFF6C63FF),
+                    strokeWidth: 4,
+                  ),
+                ),
+                const SizedBox(height: 20),
+                Text(
+                  'Thinking...',
+                  style: GoogleFonts.outfit(
+                    color: Colors.white,
+                    fontSize: 18,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Waiting for response',
+                  style: GoogleFonts.outfit(
+                    color: Colors.white54,
+                    fontSize: 14,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  '$remainingSeconds seconds remaining',
+                  style: GoogleFonts.outfit(
+                    color: remainingSeconds <= 10 ? Colors.orange : Colors.white38,
+                    fontSize: 12,
+                    fontWeight: remainingSeconds <= 10 ? FontWeight.w600 : FontWeight.w400,
+                  ),
+                ),
+                const SizedBox(height: 20),
+                ElevatedButton.icon(
+                  onPressed: _cancelCurrentOperation,
+                  icon: const Icon(Icons.cancel, size: 18),
+                  label: Text(
+                    'Cancel',
+                    style: GoogleFonts.outfit(fontWeight: FontWeight.w600),
+                  ),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.redAccent,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ).animate().scale(begin: const Offset(0.8, 0.8)).fadeIn(),
+        ),
+      ),
+    );
+  }
+
   Widget _buildInputArea(Color primary) {
     return Container(
       padding: const EdgeInsets.all(16),
@@ -641,7 +823,7 @@ class _ActiveSimulationScreenState extends State<ActiveSimulationScreen> {
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 20),
               decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.05),
+                color: Colors.white.withValues(alpha: 0.05),
                 borderRadius: BorderRadius.circular(30),
                 border: Border.all(color: Colors.white10),
               ),
@@ -668,15 +850,15 @@ class _ActiveSimulationScreenState extends State<ActiveSimulationScreen> {
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
                 color: _isRecording
-                    ? Colors.redAccent.withOpacity(0.3)
-                    : Colors.white.withOpacity(0.05),
+                    ? Colors.redAccent.withValues(alpha: 0.3)
+                    : Colors.white.withValues(alpha: 0.05),
                 shape: BoxShape.circle,
                 border: Border.all(
                     color: _isRecording ? Colors.redAccent : Colors.white10),
                 boxShadow: _isRecording
                     ? [
                         BoxShadow(
-                          color: Colors.redAccent.withOpacity(0.4),
+                          color: Colors.redAccent.withValues(alpha: 0.4),
                           blurRadius: 15,
                           offset: const Offset(0, 2),
                         ),
@@ -698,12 +880,12 @@ class _ActiveSimulationScreenState extends State<ActiveSimulationScreen> {
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
                 gradient: LinearGradient(
-                  colors: [primary, primary.withOpacity(0.8)],
+                  colors: [primary, primary.withValues(alpha: 0.8)],
                 ),
                 shape: BoxShape.circle,
                 boxShadow: [
                   BoxShadow(
-                      color: primary.withOpacity(0.4),
+                      color: primary.withValues(alpha: 0.4),
                       blurRadius: 10,
                       offset: const Offset(0, 4)),
                 ],
@@ -713,6 +895,102 @@ class _ActiveSimulationScreenState extends State<ActiveSimulationScreen> {
           ),
         ],
       ),
+    );
+  }
+
+  /// Build real-time coaching hints overlay
+  Widget _buildCoachingHintsOverlay(Color primary) {
+    String? hint;
+    IconData hintIcon = Icons.lightbulb_outline;
+    Color hintColor = Colors.amber;
+
+    // Generate contextual coaching hints
+    if (_detectedIssues.isNotEmpty) {
+      // Show corrective hints for issues
+      final issue = _detectedIssues.first.toLowerCase();
+      if (issue.contains('empathy') || issue.contains('acknowledge')) {
+        hint = 'Try acknowledging their frustration first';
+        hintIcon = Icons.favorite_outline;
+        hintColor = Colors.pink;
+      } else if (issue.contains('question') || issue.contains('clarif')) {
+        hint = 'Ask clarifying questions to understand better';
+        hintIcon = Icons.help_outline;
+        hintColor = Colors.orange;
+      } else if (issue.contains('solution') || issue.contains('resolve')) {
+        hint = 'Focus on offering a clear solution';
+        hintIcon = Icons.check_circle_outline;
+        hintColor = Colors.blue;
+      } else {
+        hint = _detectedIssues.first;
+        hintColor = Colors.amber;
+      }
+    } else if (_detectedTechniques.isNotEmpty) {
+      // Show positive reinforcement
+      final technique = _detectedTechniques.first.toLowerCase();
+      if (technique.contains('empathy')) {
+        hint = 'Good — you\'re showing empathy';
+        hintIcon = Icons.thumb_up_outlined;
+        hintColor = Colors.greenAccent;
+      } else if (technique.contains('question')) {
+        hint = 'Good — you asked a clarifying question';
+        hintIcon = Icons.question_answer_outlined;
+        hintColor = Colors.greenAccent;
+      } else if (technique.contains('solution')) {
+        hint = 'Great — you offered a clear solution';
+        hintIcon = Icons.task_alt;
+        hintColor = Colors.greenAccent;
+      } else {
+        hint = 'Good technique: ${_detectedTechniques.first}';
+        hintIcon = Icons.check_circle_outline;
+        hintColor = Colors.greenAccent;
+      }
+    } else if (_currentEmotion == 'angry' || _currentEmotion == 'frustrated') {
+      hint = 'Customer seems $_currentEmotion. Stay calm and empathetic';
+      hintIcon = Icons.sentiment_dissatisfied_outlined;
+      hintColor = Colors.orange;
+    } else if (_currentEmotion == 'satisfied' || _currentEmotion == 'happy') {
+      hint = 'Customer feeling positive. Keep it up!';
+      hintIcon = Icons.sentiment_satisfied_alt_outlined;
+      hintColor = Colors.greenAccent;
+    }
+
+    if (hint == null) return const SizedBox.shrink();
+
+    return Positioned(
+      bottom: 90,
+      right: 16,
+      left: 16,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        decoration: BoxDecoration(
+          color: const Color(0xFF2A2A3E).withValues(alpha: 0.95),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: hintColor.withValues(alpha: 0.4)),
+          boxShadow: [
+            BoxShadow(
+              color: hintColor.withValues(alpha: 0.2),
+              blurRadius: 12,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: Row(
+          children: [
+            Icon(hintIcon, color: hintColor, size: 20),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                hint,
+                style: GoogleFonts.outfit(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w500,
+                  color: Colors.white,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ).animate().fadeIn(duration: 300.ms).slideY(begin: 0.3, end: 0),
     );
   }
 }
