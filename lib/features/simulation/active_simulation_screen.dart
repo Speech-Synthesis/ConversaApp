@@ -243,6 +243,8 @@ class _ActiveSimulationScreenState extends State<ActiveSimulationScreen> {
     }
 
     try {
+      // Keep audio bytes for voice analysis after transcription
+      final audioBytes = result.bytes;
       final transcribed = await _voice.transcribe(
         result.bytes,
         sessionId: _sessionId ?? '',
@@ -252,7 +254,11 @@ class _ActiveSimulationScreenState extends State<ActiveSimulationScreen> {
       if (transcribed.isNotEmpty) {
         // Reset _sending so _sendMessage's guard doesn't block
         if (mounted) setState(() { _sending = false; });
+        // Track the message index so we can update it with voice analysis
+        final msgIndex = _messages.length; // next trainee message will be at this index
         await _sendMessage(transcribed);
+        // Async voice analysis — updates the badge once result arrives
+        _analyzeAndAttachTone(audioBytes, msgIndex);
       } else {
         if (mounted) {
           setState(() { _sending = false; });
@@ -264,8 +270,6 @@ class _ActiveSimulationScreenState extends State<ActiveSimulationScreen> {
           );
         }
       }
-      // Non-blocking voice analysis
-      _voice.analyzeVoice(result.bytes);
     } catch (e) {
       debugPrint('[Mic] Transcription error: $e');
       if (mounted) {
@@ -277,6 +281,21 @@ class _ActiveSimulationScreenState extends State<ActiveSimulationScreen> {
           ),
         );
       }
+    }
+  }
+
+  /// Analyze voice and attach tone badge to the trainee message at [msgIndex].
+  Future<void> _analyzeAndAttachTone(Uint8List audioBytes, int msgIndex) async {
+    try {
+      final analysis = await _voice.analyzeVoice(audioBytes);
+      if (analysis != null && mounted && msgIndex < _messages.length) {
+        setState(() {
+          _messages[msgIndex]['voiceTone'] = analysis.primaryEmotion;
+          _messages[msgIndex]['voiceScore'] = analysis.emotionConfidence;
+        });
+      }
+    } catch (e) {
+      debugPrint('[Voice] Tone analysis failed: $e');
     }
   }
 
@@ -488,6 +507,10 @@ class _ActiveSimulationScreenState extends State<ActiveSimulationScreen> {
                       isTrainee: msg['isTrainee'],
                       senderName: msg['senderName'],
                       timestamp: msg['timestamp'],
+                      voiceTone: msg['voiceTone'],
+                      voiceScore: msg['voiceScore'] != null
+                          ? (msg['voiceScore'] as num).toDouble()
+                          : null,
                     );
                   },
                 ),

@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 
+import 'voice_tone_badge.dart';
+
 /// Chat bubble for customer or trainee messages.
 class MessageBubble extends StatelessWidget {
   final String text;
@@ -9,12 +11,21 @@ class MessageBubble extends StatelessWidget {
   final DateTime? timestamp;
   final String? senderName;
 
+  /// Detected voice tone label (e.g., "monotone", "confident").
+  /// Only present for voice-recorded trainee messages.
+  final String? voiceTone;
+
+  /// Voice tone quality score (0.0 – 1.0). Displayed as x/10.
+  final double? voiceScore;
+
   const MessageBubble({
     super.key,
     required this.text,
     required this.isTrainee,
     this.timestamp,
     this.senderName,
+    this.voiceTone,
+    this.voiceScore,
   });
 
   @override
@@ -54,13 +65,25 @@ class MessageBubble extends StatelessWidget {
             if (senderName != null)
               Padding(
                 padding: const EdgeInsets.only(bottom: 4),
-                child: Text(
-                  senderName!,
-                  style: GoogleFonts.outfit(
-                    color: isTrainee ? primaryColor : Colors.tealAccent,
-                    fontSize: 11,
-                    fontWeight: FontWeight.w600,
-                  ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      senderName!,
+                      style: GoogleFonts.outfit(
+                        color: isTrainee ? primaryColor : Colors.tealAccent,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    if (voiceTone != null && voiceScore != null) ...[
+                      const SizedBox(width: 8),
+                      VoiceToneBadge(
+                        tone: voiceTone!,
+                        score: voiceScore!,
+                      ),
+                    ],
+                  ],
                 ),
               ),
             Text(
