@@ -5,18 +5,22 @@ import 'package:flutter_animate/flutter_animate.dart';
 
 import '../../core/api_client.dart';
 import '../../models/analysis.dart';
+import '../../models/scenario.dart';
 import '../../widgets/score_bar.dart';
+import '../../services/progress_tracking_service.dart';
 import 'scenario_list_screen.dart';
 
 /// Performance report screen after a simulation ends.
 class FeedbackScreen extends StatefulWidget {
   final String sessionId;
   final String scenarioTitle;
+  final ScenarioSummary scenario;
 
   const FeedbackScreen({
     super.key,
     required this.sessionId,
     required this.scenarioTitle,
+    required this.scenario,
   });
 
   @override
@@ -25,12 +29,24 @@ class FeedbackScreen extends StatefulWidget {
 
 class _FeedbackScreenState extends State<FeedbackScreen> {
   final ApiClient _api = ApiClient();
+  final ProgressTrackingService _progressService = ProgressTrackingService();
   AnalysisResponse? _analysis;
   QuickScoreResponse? _quickScore;
   bool _loading = true;
   bool _isQuickFallback = false;
   String? _error;
   String? _transcript;
+
+  Future<void> _saveProgressResult(AnalysisResponse analysis) async {
+    try {
+      await _progressService.saveResult(
+        analysis: analysis,
+        scenario: widget.scenario,
+      );
+    } catch (e) {
+      // Silently fail - progress tracking is not critical
+    }
+  }
 
   @override
   void initState() {
@@ -46,6 +62,8 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
     try {
       final analysis = await _api.getAnalysis(widget.sessionId);
       if (mounted) {
+        // Save progress result
+        await _saveProgressResult(analysis);
         setState(() {
           _analysis = analysis;
           _loading = false;
@@ -191,7 +209,7 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
             height: 180,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              color: primary.withOpacity(0.08),
+              color: primary.withValues(alpha: 0.08),
             ),
           ),
         ),
@@ -249,10 +267,10 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
                       padding: const EdgeInsets.symmetric(
                           horizontal: 12, vertical: 6),
                       decoration: BoxDecoration(
-                        color: Colors.amber.withOpacity(0.1),
+                        color: Colors.amber.withValues(alpha: 0.1),
                         borderRadius: BorderRadius.circular(12),
                         border:
-                            Border.all(color: Colors.amber.withOpacity(0.3)),
+                            Border.all(color: Colors.amber.withValues(alpha: 0.3)),
                       ),
                       child: Text(
                         'Quick analysis (detailed report unavailable)',
@@ -271,14 +289,14 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
                   decoration: BoxDecoration(
                     gradient: LinearGradient(
                       colors: [
-                        primary.withOpacity(0.15),
+                        primary.withValues(alpha: 0.15),
                         const Color(0xFF2A2A3C),
                       ],
                       begin: Alignment.topCenter,
                       end: Alignment.bottomCenter,
                     ),
                     borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: Colors.white.withOpacity(0.06)),
+                    border: Border.all(color: Colors.white.withValues(alpha: 0.06)),
                   ),
                   child: Column(
                     children: [
@@ -386,10 +404,10 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
                         margin: const EdgeInsets.only(bottom: 8),
                         padding: const EdgeInsets.all(12),
                         decoration: BoxDecoration(
-                          color: primary.withOpacity(0.06),
+                          color: primary.withValues(alpha: 0.06),
                           borderRadius: BorderRadius.circular(12),
                           border: Border.all(
-                              color: primary.withOpacity(0.15)),
+                              color: primary.withValues(alpha: 0.15)),
                         ),
                         child: Text(f,
                             style: GoogleFonts.outfit(
@@ -421,7 +439,7 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
                       color: const Color(0xFF2A2A3C),
                       borderRadius: BorderRadius.circular(14),
                       border:
-                          Border.all(color: Colors.white.withOpacity(0.06)),
+                          Border.all(color: Colors.white.withValues(alpha: 0.06)),
                     ),
                     child: Row(
                       children: [
@@ -500,7 +518,7 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
       decoration: BoxDecoration(
         color: const Color(0xFF2A2A3C),
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: Colors.white.withOpacity(0.06)),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.06)),
       ),
       child: Column(children: bars),
     ).animate().fadeIn();
@@ -513,7 +531,7 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
       decoration: BoxDecoration(
         color: const Color(0xFF2A2A3C),
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: Colors.white.withOpacity(0.06)),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.06)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -567,9 +585,9 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 12),
         decoration: BoxDecoration(
-          color: color.withOpacity(0.1),
+          color: color.withValues(alpha: 0.1),
           borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: color.withOpacity(0.3)),
+          border: Border.all(color: color.withValues(alpha: 0.3)),
         ),
         child: Column(
           children: [
