@@ -50,7 +50,7 @@ class ScoreBar extends StatelessWidget {
                 Container(
                   height: 8,
                   decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.08),
+                    color: Colors.white.withValues(alpha: 0.08),
                     borderRadius: BorderRadius.circular(4),
                   ),
                 ),
@@ -60,7 +60,7 @@ class ScoreBar extends StatelessWidget {
                     height: 8,
                     decoration: BoxDecoration(
                       gradient: LinearGradient(
-                        colors: [c.withOpacity(0.7), c],
+                        colors: [c.withValues(alpha: 0.7), c],
                       ),
                       borderRadius: BorderRadius.circular(4),
                     ),

@@ -21,10 +21,10 @@ class MessageBubble extends StatelessWidget {
   Widget build(BuildContext context) {
     const primaryColor = Color(0xFF6C63FF);
     final bubbleColor = isTrainee
-        ? primaryColor.withOpacity(0.2)
+        ? primaryColor.withValues(alpha: 0.2)
         : const Color(0xFF2A2A3C);
     final borderColor = isTrainee
-        ? primaryColor.withOpacity(0.3)
+        ? primaryColor.withValues(alpha: 0.3)
         : Colors.white10;
 
     return Align(
@@ -66,7 +66,7 @@ class MessageBubble extends StatelessWidget {
             Text(
               text,
               style: GoogleFonts.outfit(
-                color: Colors.white.withOpacity(0.95),
+                color: Colors.white.withValues(alpha: 0.95),
                 fontSize: 15,
                 height: 1.4,
               ),
