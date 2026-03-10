@@ -36,7 +36,7 @@ class _ActiveSimulationScreenState extends ConsumerState<ActiveSimulationScreen>
   List<String> _detectedTechniques = [];
   List<String> _detectedIssues = [];
 
-  // Messages: {text, isTrainee, senderName, timestamp}
+  // Messages: {text, isTrainee, senderName, timestamp, voiceTone?, voiceScore?}
   final List<Map<String, dynamic>> _messages = [];
 
   bool _loading = true;
@@ -44,6 +44,10 @@ class _ActiveSimulationScreenState extends ConsumerState<ActiveSimulationScreen>
   bool _isRecording = false;
   bool _conversationComplete = false;
   String? _error;
+  final int _timeoutSeconds = 90;
+  int _elapsedSeconds = 0;
+
+  // Timeout tracking
   final int _timeoutSeconds = 90;
   int _elapsedSeconds = 0;
 
@@ -171,7 +175,6 @@ class _ActiveSimulationScreenState extends ConsumerState<ActiveSimulationScreen>
 
         // Auto-end if conversation is complete
         if (turn.conversationComplete && turn.goodbyeMessage != null) {
-          // Show goodbye message
           await Future.delayed(const Duration(seconds: 2));
           if (mounted) _showEndDialog(autoEnd: true);
         }
@@ -534,7 +537,7 @@ class _ActiveSimulationScreenState extends ConsumerState<ActiveSimulationScreen>
           const SizedBox(width: 8),
           IconButton(
             icon: const Icon(Icons.stop_circle_outlined, color: Colors.redAccent, size: 24),
-            onPressed: _conversationComplete ? null : () => _showEndDialog(),
+            onPressed: () => _showEndDialog(),
             tooltip: 'End Session',
           ),
         ],
@@ -590,6 +593,10 @@ class _ActiveSimulationScreenState extends ConsumerState<ActiveSimulationScreen>
                       return _buildTypingIndicator();
                     }
                     final msg = _messages[index];
+                    final voiceTone = msg['voiceTone'] as String?;
+                    final voiceScore = msg['voiceScore'] != null
+                        ? (msg['voiceScore'] as num).toDouble()
+                        : null;
                     return MessageBubble(
                       text: msg['text'],
                       isTrainee: msg['isTrainee'],
@@ -837,7 +844,7 @@ class _ActiveSimulationScreenState extends ConsumerState<ActiveSimulationScreen>
                   contentPadding: const EdgeInsets.symmetric(vertical: 14),
                 ),
                 onSubmitted: _sendMessage,
-                enabled: !_sending && !_conversationComplete,
+                enabled: !_conversationComplete,
               ),
             ),
           ),

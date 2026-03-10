@@ -10,6 +10,8 @@ class MessageBubble extends StatelessWidget {
   final bool isTrainee;
   final DateTime? timestamp;
   final String? senderName;
+  /// Optional badge widget displayed next to the sender name (e.g. VoiceToneBadge).
+  final Widget? badge;
 
   /// Detected voice tone label (e.g., "monotone", "confident").
   /// Only present for voice-recorded trainee messages.
