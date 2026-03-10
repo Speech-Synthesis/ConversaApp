@@ -483,7 +483,7 @@ class _ActiveSimulationScreenState extends State<ActiveSimulationScreen> {
           const SizedBox(width: 8),
           IconButton(
             icon: const Icon(Icons.stop_circle_outlined, color: Colors.redAccent, size: 24),
-            onPressed: _conversationComplete ? null : () => _showEndDialog(),
+            onPressed: () => _showEndDialog(),
             tooltip: 'End Session',
           ),
         ],
@@ -556,13 +556,6 @@ class _ActiveSimulationScreenState extends State<ActiveSimulationScreen> {
 
           // Recording overlay
           if (_isRecording) _buildRecordingOverlay(),
-          
-          // Loading/Sending overlay with cancel button
-          if (_sending) _buildLoadingOverlay(),
-
-          // Real-time coaching hints overlay
-          if (!_sending && !_isRecording && _turnNumber > 0)
-            _buildCoachingHintsOverlay(primary),
         ],
       ),
     );
