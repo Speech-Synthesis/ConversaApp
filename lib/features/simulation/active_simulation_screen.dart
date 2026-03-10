@@ -20,10 +20,12 @@ class ActiveSimulationScreen extends ConsumerStatefulWidget {
   const ActiveSimulationScreen({super.key, required this.scenario});
 
   @override
-  ConsumerState<ActiveSimulationScreen> createState() => _ActiveSimulationScreenState();
+  ConsumerState<ActiveSimulationScreen> createState() =>
+      _ActiveSimulationScreenState();
 }
 
-class _ActiveSimulationScreenState extends ConsumerState<ActiveSimulationScreen> {
+class _ActiveSimulationScreenState
+    extends ConsumerState<ActiveSimulationScreen> {
   final TextEditingController _textController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
 
@@ -47,10 +49,6 @@ class _ActiveSimulationScreenState extends ConsumerState<ActiveSimulationScreen>
   final int _timeoutSeconds = 90;
   int _elapsedSeconds = 0;
 
-  // Timeout tracking
-  final int _timeoutSeconds = 90;
-  int _elapsedSeconds = 0;
-
   @override
   void initState() {
     super.initState();
@@ -70,7 +68,9 @@ class _ActiveSimulationScreenState extends ConsumerState<ActiveSimulationScreen>
       _error = null;
     });
     try {
-      final result = await ref.read(apiClientProvider).startSimulation(widget.scenario.scenarioId);
+      final result = await ref
+          .read(apiClientProvider)
+          .startSimulation(widget.scenario.scenarioId);
       if (mounted) {
         setState(() {
           _sessionId = result.sessionId;
@@ -86,16 +86,27 @@ class _ActiveSimulationScreenState extends ConsumerState<ActiveSimulationScreen>
         });
         _scrollToBottom();
         // Play customer opening message
-        ref.read(voiceServiceProvider).synthesizeAndPlay(result.openingMessage,
-            style: result.prosody['style']?.toString(),
-            pitch: result.prosody['pitch']?.toString(),
-            rate: result.prosody['rate']?.toString());
+        ref
+            .read(voiceServiceProvider)
+            .synthesizeAndPlay(
+              result.openingMessage,
+              style: result.prosody['style']?.toString(),
+              pitch: result.prosody['pitch']?.toString(),
+              rate: result.prosody['rate']?.toString(),
+            );
       }
     } on ApiException catch (e) {
-      if (mounted) setState(() { _loading = false; _error = e.message; });
+      if (mounted)
+        setState(() {
+          _loading = false;
+          _error = e.message;
+        });
     } catch (e) {
       if (mounted) {
-        setState(() { _loading = false; _error = 'Failed to start simulation'; });
+        setState(() {
+          _loading = false;
+          _error = 'Failed to start simulation';
+        });
       }
     }
   }
@@ -129,24 +140,29 @@ class _ActiveSimulationScreenState extends ConsumerState<ActiveSimulationScreen>
     _scrollToBottom();
 
     // Start a timer to track elapsed seconds
-    final timer = Stream.periodic(const Duration(seconds: 1), (count) => count + 1)
-        .take(_timeoutSeconds)
-        .listen((seconds) {
-      if (mounted && _sending) {
-        setState(() => _elapsedSeconds = seconds);
-      }
-    });
+    final timer =
+        Stream.periodic(
+          const Duration(seconds: 1),
+          (count) => count + 1,
+        ).take(_timeoutSeconds).listen((seconds) {
+          if (mounted && _sending) {
+            setState(() => _elapsedSeconds = seconds);
+          }
+        });
 
     try {
-      final turn = await ref.read(apiClientProvider).sendResponse(_sessionId!, text).timeout(
-        Duration(seconds: _timeoutSeconds),
-        onTimeout: () {
-          throw TimeoutException('Request took too long');
-        },
-      );
-      
+      final turn = await ref
+          .read(apiClientProvider)
+          .sendResponse(_sessionId!, text)
+          .timeout(
+            Duration(seconds: _timeoutSeconds),
+            onTimeout: () {
+              throw TimeoutException('Request took too long');
+            },
+          );
+
       timer.cancel();
-      
+
       if (mounted) {
         setState(() {
           _sending = false;
@@ -168,10 +184,14 @@ class _ActiveSimulationScreenState extends ConsumerState<ActiveSimulationScreen>
         _scrollToBottom();
 
         // Play customer response
-        ref.read(voiceServiceProvider).synthesizeAndPlay(turn.customerMessage,
-            style: turn.prosody['style']?.toString(),
-            pitch: turn.prosody['pitch']?.toString(),
-            rate: turn.prosody['rate']?.toString());
+        ref
+            .read(voiceServiceProvider)
+            .synthesizeAndPlay(
+              turn.customerMessage,
+              style: turn.prosody['style']?.toString(),
+              pitch: turn.prosody['pitch']?.toString(),
+              rate: turn.prosody['rate']?.toString(),
+            );
 
         // Auto-end if conversation is complete
         if (turn.conversationComplete && turn.goodbyeMessage != null) {
@@ -208,8 +228,9 @@ class _ActiveSimulationScreenState extends ConsumerState<ActiveSimulationScreen>
         });
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-              content: Text('Failed to send response'),
-              backgroundColor: Colors.redAccent),
+            content: Text('Failed to send response'),
+            backgroundColor: Colors.redAccent,
+          ),
         );
       }
     }
@@ -228,8 +249,9 @@ class _ActiveSimulationScreenState extends ConsumerState<ActiveSimulationScreen>
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(
-                  content: Text('Microphone permission denied'),
-                  backgroundColor: Colors.redAccent),
+                content: Text('Microphone permission denied'),
+                backgroundColor: Colors.redAccent,
+              ),
             );
           }
           return;
@@ -269,10 +291,14 @@ class _ActiveSimulationScreenState extends ConsumerState<ActiveSimulationScreen>
     }
 
     if (mounted) {
-      setState(() { _sending = true; });
+      setState(() {
+        _sending = true;
+      });
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Transcribing ${result.bytes.length} bytes of audio...'),
+          content: Text(
+            'Transcribing ${result.bytes.length} bytes of audio...',
+          ),
           backgroundColor: const Color(0xFF2A2A3C),
           duration: const Duration(seconds: 2),
         ),
@@ -282,15 +308,20 @@ class _ActiveSimulationScreenState extends ConsumerState<ActiveSimulationScreen>
     try {
       // Keep audio bytes for voice analysis after transcription
       final audioBytes = result.bytes;
-      final transcribed = await ref.read(voiceServiceProvider).transcribe(
-        result.bytes,
-        sessionId: _sessionId ?? '',
-        filename: result.filename,
-      );
+      final transcribed = await ref
+          .read(voiceServiceProvider)
+          .transcribe(
+            result.bytes,
+            sessionId: _sessionId ?? '',
+            filename: result.filename,
+          );
       debugPrint('[Mic] Transcribed: "$transcribed"');
       if (transcribed.isNotEmpty) {
         // Reset _sending so _sendMessage's guard doesn't block
-        if (mounted) setState(() { _sending = false; });
+        if (mounted)
+          setState(() {
+            _sending = false;
+          });
         // Track the message index so we can update it with voice analysis
         final msgIndex = _messages.length;
         await _sendMessage(transcribed);
@@ -298,10 +329,14 @@ class _ActiveSimulationScreenState extends ConsumerState<ActiveSimulationScreen>
         _analyzeAndAttachTone(audioBytes, msgIndex);
       } else {
         if (mounted) {
-          setState(() { _sending = false; });
+          setState(() {
+            _sending = false;
+          });
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text('Could not transcribe audio. Please speak louder or try text.'),
+              content: Text(
+                'Could not transcribe audio. Please speak louder or try text.',
+              ),
               backgroundColor: Colors.orange,
             ),
           );
@@ -310,7 +345,9 @@ class _ActiveSimulationScreenState extends ConsumerState<ActiveSimulationScreen>
     } catch (e) {
       debugPrint('[Mic] Transcription error: $e');
       if (mounted) {
-        setState(() { _sending = false; });
+        setState(() {
+          _sending = false;
+        });
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Voice error: $e'),
@@ -324,7 +361,9 @@ class _ActiveSimulationScreenState extends ConsumerState<ActiveSimulationScreen>
   /// Analyze voice and attach tone badge to the trainee message at [msgIndex].
   Future<void> _analyzeAndAttachTone(Uint8List audioBytes, int msgIndex) async {
     try {
-      final analysis = await ref.read(voiceServiceProvider).analyzeVoice(audioBytes);
+      final analysis = await ref
+          .read(voiceServiceProvider)
+          .analyzeVoice(audioBytes);
       if (analysis != null && mounted && msgIndex < _messages.length) {
         setState(() {
           _messages[msgIndex]['voiceTone'] = analysis.primaryEmotion;
@@ -344,7 +383,10 @@ class _ActiveSimulationScreenState extends ConsumerState<ActiveSimulationScreen>
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: Text(
           autoEnd ? 'Conversation Ended' : 'End Session',
-          style: GoogleFonts.outfit(color: Colors.white, fontWeight: FontWeight.w600),
+          style: GoogleFonts.outfit(
+            color: Colors.white,
+            fontWeight: FontWeight.w600,
+          ),
         ),
         content: Text(
           autoEnd
@@ -358,16 +400,20 @@ class _ActiveSimulationScreenState extends ConsumerState<ActiveSimulationScreen>
               Navigator.pop(ctx);
               _endSession(false);
             },
-            child: Text('Unresolved',
-                style: GoogleFonts.outfit(color: Colors.redAccent)),
+            child: Text(
+              'Unresolved',
+              style: GoogleFonts.outfit(color: Colors.redAccent),
+            ),
           ),
           TextButton(
             onPressed: () {
               Navigator.pop(ctx);
               _endSession(true);
             },
-            child: Text('Resolved',
-                style: GoogleFonts.outfit(color: Colors.greenAccent)),
+            child: Text(
+              'Resolved',
+              style: GoogleFonts.outfit(color: Colors.greenAccent),
+            ),
           ),
         ],
       ),
@@ -377,7 +423,9 @@ class _ActiveSimulationScreenState extends ConsumerState<ActiveSimulationScreen>
   Future<void> _endSession(bool resolved) async {
     if (_sessionId == null) return;
     try {
-      await ref.read(apiClientProvider).endSimulation(_sessionId!, resolutionAchieved: resolved);
+      await ref
+          .read(apiClientProvider)
+          .endSimulation(_sessionId!, resolutionAchieved: resolved);
       if (mounted) {
         Navigator.pushReplacement(
           context,
@@ -431,7 +479,10 @@ class _ActiveSimulationScreenState extends ConsumerState<ActiveSimulationScreen>
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: Text(
           'Request Timed Out',
-          style: GoogleFonts.outfit(color: Colors.white, fontWeight: FontWeight.w600),
+          style: GoogleFonts.outfit(
+            color: Colors.white,
+            fontWeight: FontWeight.w600,
+          ),
         ),
         content: Text(
           'The simulation did not respond within $_timeoutSeconds seconds. Would you like to retry or end the session?',
@@ -443,16 +494,20 @@ class _ActiveSimulationScreenState extends ConsumerState<ActiveSimulationScreen>
               Navigator.pop(ctx);
               _showEndDialog();
             },
-            child: Text('End Session',
-                style: GoogleFonts.outfit(color: Colors.redAccent)),
+            child: Text(
+              'End Session',
+              style: GoogleFonts.outfit(color: Colors.redAccent),
+            ),
           ),
           TextButton(
             onPressed: () {
               Navigator.pop(ctx);
               // User can try sending another message
             },
-            child: Text('Continue',
-                style: GoogleFonts.outfit(color: Colors.greenAccent)),
+            child: Text(
+              'Continue',
+              style: GoogleFonts.outfit(color: Colors.greenAccent),
+            ),
           ),
         ],
       ),
@@ -473,7 +528,10 @@ class _ActiveSimulationScreenState extends ConsumerState<ActiveSimulationScreen>
             children: [
               const CircularProgressIndicator(color: primary, strokeWidth: 3),
               const SizedBox(height: 16),
-              Text('Starting simulation...', style: GoogleFonts.outfit(color: Colors.white54)),
+              Text(
+                'Starting simulation...',
+                style: GoogleFonts.outfit(color: Colors.white54),
+              ),
             ],
           ),
         ),
@@ -487,7 +545,11 @@ class _ActiveSimulationScreenState extends ConsumerState<ActiveSimulationScreen>
           backgroundColor: Colors.transparent,
           elevation: 0,
           leading: IconButton(
-            icon: const Icon(Icons.arrow_back_ios_new, color: Colors.white70, size: 20),
+            icon: const Icon(
+              Icons.arrow_back_ios_new,
+              color: Colors.white70,
+              size: 20,
+            ),
             onPressed: () => Navigator.pop(context),
           ),
         ),
@@ -495,13 +557,23 @@ class _ActiveSimulationScreenState extends ConsumerState<ActiveSimulationScreen>
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Icon(Icons.error_outline, color: Colors.redAccent, size: 40),
+              const Icon(
+                Icons.error_outline,
+                color: Colors.redAccent,
+                size: 40,
+              ),
               const SizedBox(height: 12),
               Text(_error!, style: GoogleFonts.outfit(color: Colors.white54)),
               const SizedBox(height: 16),
               GestureDetector(
                 onTap: _startSimulation,
-                child: Text('Retry', style: GoogleFonts.outfit(color: primary, fontWeight: FontWeight.w600)),
+                child: Text(
+                  'Retry',
+                  style: GoogleFonts.outfit(
+                    color: primary,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
               ),
             ],
           ),
@@ -515,7 +587,11 @@ class _ActiveSimulationScreenState extends ConsumerState<ActiveSimulationScreen>
         elevation: 0,
         backgroundColor: const Color(0xFF2A2A3C),
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new, color: Colors.white70, size: 20),
+          icon: const Icon(
+            Icons.arrow_back_ios_new,
+            color: Colors.white70,
+            size: 20,
+          ),
           onPressed: () => Navigator.pop(context),
         ),
         title: Column(
@@ -523,7 +599,11 @@ class _ActiveSimulationScreenState extends ConsumerState<ActiveSimulationScreen>
           children: [
             Text(
               widget.scenario.title,
-              style: GoogleFonts.outfit(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w600),
+              style: GoogleFonts.outfit(
+                color: Colors.white,
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+              ),
               overflow: TextOverflow.ellipsis,
             ),
             Text(
@@ -536,7 +616,11 @@ class _ActiveSimulationScreenState extends ConsumerState<ActiveSimulationScreen>
           EmotionBadge(emotion: _currentEmotion, changed: _emotionChanged),
           const SizedBox(width: 8),
           IconButton(
-            icon: const Icon(Icons.stop_circle_outlined, color: Colors.redAccent, size: 24),
+            icon: const Icon(
+              Icons.stop_circle_outlined,
+              color: Colors.redAccent,
+              size: 24,
+            ),
             onPressed: () => _showEndDialog(),
             tooltip: 'End Session',
           ),
@@ -556,7 +640,10 @@ class _ActiveSimulationScreenState extends ConsumerState<ActiveSimulationScreen>
               // Techniques / issues bar
               if (_detectedTechniques.isNotEmpty || _detectedIssues.isNotEmpty)
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 8,
+                  ),
                   color: const Color(0xFF2A2A3C).withValues(alpha: 0.5),
                   child: Row(
                     children: [
@@ -586,7 +673,10 @@ class _ActiveSimulationScreenState extends ConsumerState<ActiveSimulationScreen>
               Expanded(
                 child: ListView.builder(
                   controller: _scrollController,
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 10,
+                  ),
                   itemCount: _messages.length + (_sending ? 1 : 0),
                   itemBuilder: (context, index) {
                     if (index == _messages.length) {
@@ -618,7 +708,7 @@ class _ActiveSimulationScreenState extends ConsumerState<ActiveSimulationScreen>
 
           // Recording overlay
           if (_isRecording) _buildRecordingOverlay(),
-          
+
           // Loading/Sending overlay with cancel button
           if (_sending) _buildLoadingOverlay(),
 
@@ -643,13 +733,21 @@ class _ActiveSimulationScreenState extends ConsumerState<ActiveSimulationScreen>
         mainAxisSize: MainAxisSize.min,
         children: [
           Icon(
-            isPositive ? Icons.check_circle_outline : Icons.warning_amber_rounded,
+            isPositive
+                ? Icons.check_circle_outline
+                : Icons.warning_amber_rounded,
             color: c,
             size: 12,
           ),
           const SizedBox(width: 4),
-          Text(label,
-              style: GoogleFonts.outfit(color: c, fontSize: 10, fontWeight: FontWeight.w500)),
+          Text(
+            label,
+            style: GoogleFonts.outfit(
+              color: c,
+              fontSize: 10,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
         ],
       ),
     );
@@ -673,19 +771,25 @@ class _ActiveSimulationScreenState extends ConsumerState<ActiveSimulationScreen>
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [0, 1, 2]
-              .map((i) => Container(
-                    margin: const EdgeInsets.symmetric(horizontal: 2),
-                    width: 6,
-                    height: 6,
-                    decoration: const BoxDecoration(
-                        color: Colors.white54, shape: BoxShape.circle),
-                  )
-                      .animate(onPlay: (c) => c.repeat(reverse: true))
-                      .scale(
+              .map(
+                (i) =>
+                    Container(
+                          margin: const EdgeInsets.symmetric(horizontal: 2),
+                          width: 6,
+                          height: 6,
+                          decoration: const BoxDecoration(
+                            color: Colors.white54,
+                            shape: BoxShape.circle,
+                          ),
+                        )
+                        .animate(onPlay: (c) => c.repeat(reverse: true))
+                        .scale(
                           delay: (i * 200).ms,
                           duration: 600.ms,
                           begin: const Offset(0.8, 0.8),
-                          end: const Offset(1.2, 1.2)))
+                          end: const Offset(1.2, 1.2),
+                        ),
+              )
               .toList(),
         ),
       ),
@@ -705,28 +809,34 @@ class _ActiveSimulationScreenState extends ConsumerState<ActiveSimulationScreen>
             borderRadius: BorderRadius.circular(30),
             boxShadow: [
               BoxShadow(
-                  color: Colors.redAccent.withValues(alpha: 0.4),
-                  blurRadius: 20,
-                  offset: const Offset(0, 4)),
+                color: Colors.redAccent.withValues(alpha: 0.4),
+                blurRadius: 20,
+                offset: const Offset(0, 4),
+              ),
             ],
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
               Container(
-                width: 12,
-                height: 12,
-                decoration: const BoxDecoration(
-                    color: Colors.white, shape: BoxShape.circle),
-              )
+                    width: 12,
+                    height: 12,
+                    decoration: const BoxDecoration(
+                      color: Colors.white,
+                      shape: BoxShape.circle,
+                    ),
+                  )
                   .animate(onPlay: (c) => c.repeat(reverse: true))
                   .fade(duration: 600.ms, begin: 0.3, end: 1.0),
               const SizedBox(width: 12),
-              Text('Recording... Tap mic to stop',
-                  style: GoogleFonts.outfit(
-                      color: Colors.white,
-                      fontSize: 14,
-                      fontWeight: FontWeight.w500)),
+              Text(
+                'Recording... Tap mic to stop',
+                style: GoogleFonts.outfit(
+                  color: Colors.white,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
             ],
           ),
         ).animate().fade().slideY(begin: 0.3, end: 0),
@@ -791,9 +901,13 @@ class _ActiveSimulationScreenState extends ConsumerState<ActiveSimulationScreen>
                 Text(
                   '$remainingSeconds seconds remaining',
                   style: GoogleFonts.outfit(
-                    color: remainingSeconds <= 10 ? Colors.orange : Colors.white38,
+                    color: remainingSeconds <= 10
+                        ? Colors.orange
+                        : Colors.white38,
                     fontSize: 12,
-                    fontWeight: remainingSeconds <= 10 ? FontWeight.w600 : FontWeight.w400,
+                    fontWeight: remainingSeconds <= 10
+                        ? FontWeight.w600
+                        : FontWeight.w400,
                   ),
                 ),
                 const SizedBox(height: 20),
@@ -807,7 +921,10 @@ class _ActiveSimulationScreenState extends ConsumerState<ActiveSimulationScreen>
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.redAccent,
                     foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 24,
+                      vertical: 12,
+                    ),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(12),
                     ),
@@ -861,7 +978,8 @@ class _ActiveSimulationScreenState extends ConsumerState<ActiveSimulationScreen>
                     : Colors.white.withValues(alpha: 0.05),
                 shape: BoxShape.circle,
                 border: Border.all(
-                    color: _isRecording ? Colors.redAccent : Colors.white10),
+                  color: _isRecording ? Colors.redAccent : Colors.white10,
+                ),
                 boxShadow: _isRecording
                     ? [
                         BoxShadow(
@@ -892,12 +1010,17 @@ class _ActiveSimulationScreenState extends ConsumerState<ActiveSimulationScreen>
                 shape: BoxShape.circle,
                 boxShadow: [
                   BoxShadow(
-                      color: primary.withValues(alpha: 0.4),
-                      blurRadius: 10,
-                      offset: const Offset(0, 4)),
+                    color: primary.withValues(alpha: 0.4),
+                    blurRadius: 10,
+                    offset: const Offset(0, 4),
+                  ),
                 ],
               ),
-              child: const Icon(Icons.send_rounded, color: Colors.white, size: 22),
+              child: const Icon(
+                Icons.send_rounded,
+                color: Colors.white,
+                size: 22,
+              ),
             ),
           ),
         ],
