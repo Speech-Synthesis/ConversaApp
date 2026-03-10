@@ -47,6 +47,10 @@ class _ActiveSimulationScreenState extends State<ActiveSimulationScreen> {
   bool _conversationComplete = false;
   String? _error;
 
+  // Timeout tracking
+  int _timeoutSeconds = 60;
+  int _elapsedSeconds = 0;
+
   @override
   void initState() {
     super.initState();
@@ -746,9 +750,71 @@ class _ActiveSimulationScreenState extends State<ActiveSimulationScreen> {
                       borderRadius: BorderRadius.circular(12),
                     ),
                   ),
+                ),
+              ],
+            ),
           ).animate().scale(begin: const Offset(0.8, 0.8)).fadeIn(),
         ),
       ),
+    );
+  }
+
+  Widget _buildCoachingHintsOverlay(Color primary) {
+    final hints = <String>[];
+    if (_detectedIssues.isNotEmpty) {
+      hints.add('Try addressing: ${_detectedIssues.join(", ")}');
+    }
+    if (_detectedTechniques.isEmpty && _turnNumber > 1) {
+      hints.add('Consider using empathy or active listening techniques');
+    }
+    if (_currentEmotion == 'frustrated' || _currentEmotion == 'angry') {
+      hints.add('Customer seems upset — try acknowledging their feelings');
+    }
+    if (hints.isEmpty) return const SizedBox.shrink();
+
+    return Positioned(
+      bottom: 80,
+      left: 16,
+      right: 16,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        decoration: BoxDecoration(
+          color: primary.withOpacity(0.15),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: primary.withOpacity(0.3)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.lightbulb_outline, color: primary, size: 16),
+                const SizedBox(width: 6),
+                Text(
+                  'Coaching Hint',
+                  style: GoogleFonts.outfit(
+                    color: primary,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            ...hints.map((hint) => Padding(
+              padding: const EdgeInsets.only(bottom: 4),
+              child: Text(
+                '• $hint',
+                style: GoogleFonts.outfit(
+                  color: Colors.white70,
+                  fontSize: 12,
+                ),
+              ),
+            )),
+          ],
+        ),
+      ).animate().fadeIn(duration: 400.ms).slideY(begin: 0.2, end: 0),
     );
   }
 
