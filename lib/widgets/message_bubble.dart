@@ -8,6 +8,8 @@ class MessageBubble extends StatelessWidget {
   final bool isTrainee;
   final DateTime? timestamp;
   final String? senderName;
+  /// Optional badge widget displayed next to the sender name (e.g. VoiceToneBadge).
+  final Widget? badge;
 
   const MessageBubble({
     super.key,
@@ -15,6 +17,7 @@ class MessageBubble extends StatelessWidget {
     required this.isTrainee,
     this.timestamp,
     this.senderName,
+    this.badge,
   });
 
   @override
@@ -54,13 +57,22 @@ class MessageBubble extends StatelessWidget {
             if (senderName != null)
               Padding(
                 padding: const EdgeInsets.only(bottom: 4),
-                child: Text(
-                  senderName!,
-                  style: GoogleFonts.outfit(
-                    color: isTrainee ? primaryColor : Colors.tealAccent,
-                    fontSize: 11,
-                    fontWeight: FontWeight.w600,
-                  ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      senderName!,
+                      style: GoogleFonts.outfit(
+                        color: isTrainee ? primaryColor : Colors.tealAccent,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    if (badge != null) ...[
+                      const SizedBox(width: 6),
+                      badge!,
+                    ],
+                  ],
                 ),
               ),
             Text(

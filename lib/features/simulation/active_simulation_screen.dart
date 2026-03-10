@@ -10,6 +10,7 @@ import '../../models/scenario.dart';
 import '../../models/simulation.dart';
 import '../../widgets/emotion_badge.dart';
 import '../../widgets/message_bubble.dart';
+import '../../widgets/voice_tone_badge.dart';
 import '../../features/voice/voice_service.dart';
 import 'feedback_screen.dart';
 
@@ -256,7 +257,22 @@ class _ActiveSimulationScreenState extends State<ActiveSimulationScreen> {
       if (transcribed.isNotEmpty) {
         // Reset _sending so _sendMessage's guard doesn't block
         if (mounted) setState(() { _sending = false; });
+        // Capture the index where the trainee message will land
+        final traineeMessageIndex = _messages.length;
         await _sendMessage(transcribed);
+        // Non-blocking voice analysis — update the specific trainee message
+        _voice.analyzeVoice(result.bytes).then((analysis) {
+          if (analysis != null && analysis.analysisSuccess && mounted) {
+            setState(() {
+              if (traineeMessageIndex < _messages.length) {
+                _messages[traineeMessageIndex]['voiceTone'] =
+                    analysis.primaryEmotion;
+                _messages[traineeMessageIndex]['voiceConfidence'] =
+                    analysis.emotionConfidence;
+              }
+            });
+          }
+        });
       } else {
         if (mounted) {
           setState(() { _sending = false; });
@@ -268,8 +284,6 @@ class _ActiveSimulationScreenState extends State<ActiveSimulationScreen> {
           );
         }
       }
-      // Non-blocking voice analysis
-      _voice.analyzeVoice(result.bytes);
     } catch (e) {
       debugPrint('[Mic] Transcription error: $e');
       if (mounted) {
@@ -539,11 +553,21 @@ class _ActiveSimulationScreenState extends State<ActiveSimulationScreen> {
                       return _buildTypingIndicator();
                     }
                     final msg = _messages[index];
+                    final voiceTone = msg['voiceTone'] as String?;
+                    final voiceConfidence = msg['voiceConfidence'] as double?;
                     return MessageBubble(
                       text: msg['text'],
                       isTrainee: msg['isTrainee'],
                       senderName: msg['senderName'],
                       timestamp: msg['timestamp'],
+                      badge: (msg['isTrainee'] == true &&
+                              voiceTone != null &&
+                              voiceConfidence != null)
+                          ? VoiceToneBadge(
+                              emotion: voiceTone,
+                              confidence: voiceConfidence,
+                            )
+                          : null,
                     );
                   },
                 ),
