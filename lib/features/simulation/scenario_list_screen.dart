@@ -1,28 +1,22 @@
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 
-import '../../core/api_client.dart';
-import '../../core/error_handler.dart';
 import '../../models/scenario.dart';
+import '../../providers/scenario_provider.dart';
 import 'active_simulation_screen.dart';
 
 /// Screen listing available training scenarios with category/difficulty filters.
-class ScenarioListScreen extends StatefulWidget {
+class ScenarioListScreen extends ConsumerStatefulWidget {
   const ScenarioListScreen({super.key});
 
   @override
-  State<ScenarioListScreen> createState() => _ScenarioListScreenState();
+  ConsumerState<ScenarioListScreen> createState() => _ScenarioListScreenState();
 }
 
-class _ScenarioListScreenState extends State<ScenarioListScreen> {
-  final ApiClient _api = ApiClient();
-  List<ScenarioSummary> _scenarios = [];
-  List<String> _categories = [];
-  bool _loading = true;
-  String? _error;
-
+class _ScenarioListScreenState extends ConsumerState<ScenarioListScreen> {
   String? _selectedCategory;
   String? _selectedDifficulty;
   final List<String> _difficulties = ['easy', 'medium', 'hard', 'expert'];
@@ -30,34 +24,10 @@ class _ScenarioListScreenState extends State<ScenarioListScreen> {
   @override
   void initState() {
     super.initState();
-    _loadData();
-  }
-
-  Future<void> _loadData() async {
-    setState(() {
-      _loading = true;
-      _error = null;
+    // Load scenarios on init
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ref.read(scenarioProvider.notifier).loadScenarios();
     });
-    try {
-      final results = await Future.wait([
-        _api.getScenarios(
-            category: _selectedCategory, difficulty: _selectedDifficulty),
-        _api.getCategories(),
-      ]);
-      if (mounted) {
-        setState(() {
-          _scenarios = results[0] as List<ScenarioSummary>;
-          if (_categories.isEmpty) {
-            _categories = results[1] as List<String>;
-          }
-          _loading = false;
-        });
-      }
-    } on ApiException catch (e) {
-      if (mounted) setState(() { _loading = false; _error = e.message; });
-    } catch (e) {
-      if (mounted) setState(() { _loading = false; _error = 'Failed to load scenarios'; });
-    }
   }
 
   void _startScenario(ScenarioSummary scenario) {
@@ -66,6 +36,13 @@ class _ScenarioListScreenState extends State<ScenarioListScreen> {
       MaterialPageRoute(
         builder: (_) => ActiveSimulationScreen(scenario: scenario),
       ),
+    );
+  }
+
+  void _loadWithFilters() {
+    ref.read(scenarioProvider.notifier).loadScenarios(
+      category: _selectedCategory,
+      difficulty: _selectedDifficulty,
     );
   }
 
@@ -88,6 +65,9 @@ class _ScenarioListScreenState extends State<ScenarioListScreen> {
   Widget build(BuildContext context) {
     const surface = Color(0xFF1E1E2E);
     const primary = Color(0xFF6C63FF);
+    
+    final scenariosAsync = ref.watch(scenarioProvider);
+    final categoriesAsync = ref.watch(categoriesProvider);
 
     return Scaffold(
       backgroundColor: surface,
@@ -99,7 +79,7 @@ class _ScenarioListScreenState extends State<ScenarioListScreen> {
             gradient: LinearGradient(
               begin: Alignment.topCenter,
               end: Alignment.bottomCenter,
-              colors: [surface.withOpacity(0.95), surface.withOpacity(0.8)],
+              colors: [surface.withValues(alpha: 0.95), surface.withValues(alpha: 0.8)],
             ),
           ),
         ),
@@ -124,7 +104,7 @@ class _ScenarioListScreenState extends State<ScenarioListScreen> {
               height: 200,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: primary.withOpacity(0.1),
+                color: primary.withValues(alpha: 0.1),
               ),
             ),
           ),
@@ -136,29 +116,69 @@ class _ScenarioListScreenState extends State<ScenarioListScreen> {
           ),
           Column(
             children: [
-              // Category tabs
-              if (_categories.isNotEmpty)
-                SizedBox(
-                  height: 44,
-                  child: ListView(
-                    scrollDirection: Axis.horizontal,
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
+              // Offline mode banner
+              if (scenariosAsync.hasError)
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                  color: Colors.orange.withValues(alpha: 0.2),
+                  child: Row(
                     children: [
-                      _filterChip('All', _selectedCategory == null, () {
-                        setState(() => _selectedCategory = null);
-                        _loadData();
-                      }),
-                      ..._categories.map((c) => _filterChip(
-                            c,
-                            _selectedCategory == c,
-                            () {
-                              setState(() => _selectedCategory = c);
-                              _loadData();
-                            },
-                          )),
+                      const Icon(Icons.cloud_off, color: Colors.orange, size: 18),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'Offline - showing cached scenarios',
+                          style: GoogleFonts.outfit(
+                            color: Colors.orange,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ),
+                      TextButton(
+                        onPressed: () => ref.read(scenarioProvider.notifier).refresh(),
+                        child: Text(
+                          'Retry',
+                          style: GoogleFonts.outfit(
+                            color: Colors.orange,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
                     ],
                   ),
                 ),
+              
+              // Category tabs
+              categoriesAsync.when(
+                data: (categories) {
+                  if (categories.isEmpty) return const SizedBox.shrink();
+                  return SizedBox(
+                    height: 44,
+                    child: ListView(
+                      scrollDirection: Axis.horizontal,
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      children: [
+                        _filterChip('All', _selectedCategory == null, () {
+                          setState(() => _selectedCategory = null);
+                          _loadWithFilters();
+                        }),
+                        ...categories.map((c) => _filterChip(
+                              c,
+                              _selectedCategory == c,
+                              () {
+                                setState(() => _selectedCategory = c);
+                                _loadWithFilters();
+                              },
+                            )),
+                      ],
+                    ),
+                  );
+                },
+                loading: () => const SizedBox.shrink(),
+                error: (error, stackTrace) => const SizedBox.shrink(),
+              ),
               // Difficulty filter
               SizedBox(
                 height: 44,
@@ -168,14 +188,14 @@ class _ScenarioListScreenState extends State<ScenarioListScreen> {
                   children: [
                     _filterChip('All Levels', _selectedDifficulty == null, () {
                       setState(() => _selectedDifficulty = null);
-                      _loadData();
+                      _loadWithFilters();
                     }),
                     ..._difficulties.map((d) => _filterChip(
                           d[0].toUpperCase() + d.substring(1),
                           _selectedDifficulty == d,
                           () {
                             setState(() => _selectedDifficulty = d);
-                            _loadData();
+                            _loadWithFilters();
                           },
                           color: _difficultyColor(d),
                         )),
@@ -186,45 +206,58 @@ class _ScenarioListScreenState extends State<ScenarioListScreen> {
 
               // Scenario list
               Expanded(
-                child: _loading
-                    ? const Center(
-                        child: CircularProgressIndicator(
-                            color: primary, strokeWidth: 3))
-                    : _error != null
-                        ? Center(
-                            child: Column(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                const Icon(Icons.error_outline,
-                                    color: Colors.redAccent, size: 40),
-                                const SizedBox(height: 12),
-                                Text(_error!,
-                                    style: GoogleFonts.outfit(
-                                        color: Colors.white54)),
-                                const SizedBox(height: 16),
-                                GestureDetector(
-                                  onTap: _loadData,
-                                  child: Text('Retry',
-                                      style: GoogleFonts.outfit(
-                                          color: primary,
-                                          fontWeight: FontWeight.w600)),
-                                ),
-                              ],
-                            ),
-                          )
-                        : _scenarios.isEmpty
-                            ? Center(
-                                child: Text('No scenarios found',
-                                    style: GoogleFonts.outfit(
-                                        color: Colors.white38)),
-                              )
-                            : ListView.builder(
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 16, vertical: 8),
-                                itemCount: _scenarios.length,
-                                itemBuilder: (_, i) =>
-                                    _buildScenarioCard(_scenarios[i], primary),
-                              ),
+                child: scenariosAsync.when(
+                  data: (scenarios) {
+                    if (scenarios.isEmpty) {
+                      return Center(
+                        child: Text(
+                          'No scenarios found',
+                          style: GoogleFonts.outfit(color: Colors.white38),
+                        ),
+                      );
+                    }
+                    return ListView.builder(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 8),
+                      itemCount: scenarios.length,
+                      itemBuilder: (context, i) =>
+                          _buildScenarioCard(scenarios[i], primary),
+                    );
+                  },
+                  loading: () => const Center(
+                    child: CircularProgressIndicator(
+                        color: primary, strokeWidth: 3),
+                  ),
+                  error: (error, stack) => Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.error_outline,
+                            color: Colors.redAccent, size: 40),
+                        const SizedBox(height: 12),
+                        Text(
+                          'Failed to load scenarios',
+                          style: GoogleFonts.outfit(color: Colors.white54),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          error.toString(),
+                          textAlign: TextAlign.center,
+                          style: GoogleFonts.outfit(
+                              color: Colors.white30, fontSize: 11),
+                        ),
+                        const SizedBox(height: 16),
+                        GestureDetector(
+                          onTap: () => ref.read(scenarioProvider.notifier).refresh(),
+                          child: Text('Retry',
+                              style: GoogleFonts.outfit(
+                                  color: primary,
+                                  fontWeight: FontWeight.w600)),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
               ),
             ],
           ),
@@ -242,10 +275,10 @@ class _ScenarioListScreenState extends State<ScenarioListScreen> {
         margin: const EdgeInsets.only(right: 8, top: 4, bottom: 4),
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
         decoration: BoxDecoration(
-          color: selected ? c.withOpacity(0.2) : Colors.white.withOpacity(0.04),
+          color: selected ? c.withValues(alpha: 0.2) : Colors.white.withValues(alpha: 0.04),
           borderRadius: BorderRadius.circular(20),
           border: Border.all(
-              color: selected ? c.withOpacity(0.5) : Colors.white10),
+              color: selected ? c.withValues(alpha: 0.5) : Colors.white10),
         ),
         child: Text(
           label,
@@ -269,10 +302,10 @@ class _ScenarioListScreenState extends State<ScenarioListScreen> {
         decoration: BoxDecoration(
           color: const Color(0xFF2A2A3C),
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: Colors.white.withOpacity(0.06)),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.06)),
           boxShadow: [
             BoxShadow(
-                color: Colors.black.withOpacity(0.2),
+                color: Colors.black.withValues(alpha: 0.2),
                 blurRadius: 8,
                 offset: const Offset(0, 3)),
           ],
@@ -297,9 +330,9 @@ class _ScenarioListScreenState extends State<ScenarioListScreen> {
                   padding:
                       const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                   decoration: BoxDecoration(
-                    color: dc.withOpacity(0.12),
+                    color: dc.withValues(alpha: 0.12),
                     borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: dc.withOpacity(0.4)),
+                    border: Border.all(color: dc.withValues(alpha: 0.4)),
                   ),
                   child: Text(
                     s.difficulty.toUpperCase(),
@@ -329,10 +362,14 @@ class _ScenarioListScreenState extends State<ScenarioListScreen> {
                 const SizedBox(width: 8),
                 _metaChip(Icons.mood, s.personaEmotion),
                 const SizedBox(width: 8),
+                if (s.voiceGender != null) ...[
+                  _metaChip(s.getGenderIcon(), s.voiceGender!),
+                  const SizedBox(width: 8),
+                ],
                 _metaChip(Icons.timer_outlined, '${s.estimatedDuration}m'),
                 const Spacer(),
                 Icon(Icons.arrow_forward_ios,
-                    color: primary.withOpacity(0.5), size: 14),
+                    color: primary.withValues(alpha: 0.5), size: 14),
               ],
             ),
             if (s.tags.isNotEmpty) ...[
@@ -346,13 +383,13 @@ class _ScenarioListScreenState extends State<ScenarioListScreen> {
                           padding: const EdgeInsets.symmetric(
                               horizontal: 8, vertical: 3),
                           decoration: BoxDecoration(
-                            color: primary.withOpacity(0.08),
+                            color: primary.withValues(alpha: 0.08),
                             borderRadius: BorderRadius.circular(10),
                           ),
                           child: Text(
                             t,
                             style: GoogleFonts.outfit(
-                                color: primary.withOpacity(0.7), fontSize: 10),
+                                color: primary.withValues(alpha: 0.7), fontSize: 10),
                           ),
                         ))
                     .toList(),

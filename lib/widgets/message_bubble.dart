@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 
+import 'voice_tone_badge.dart';
+
 /// Chat bubble for customer or trainee messages.
 class MessageBubble extends StatelessWidget {
   final String text;
@@ -11,23 +13,31 @@ class MessageBubble extends StatelessWidget {
   /// Optional badge widget displayed next to the sender name (e.g. VoiceToneBadge).
   final Widget? badge;
 
+  /// Detected voice tone label (e.g., "monotone", "confident").
+  /// Only present for voice-recorded trainee messages.
+  final String? voiceTone;
+
+  /// Voice tone quality score (0.0 – 1.0). Displayed as x/10.
+  final double? voiceScore;
+
   const MessageBubble({
     super.key,
     required this.text,
     required this.isTrainee,
     this.timestamp,
     this.senderName,
-    this.badge,
+    this.voiceTone,
+    this.voiceScore,
   });
 
   @override
   Widget build(BuildContext context) {
     const primaryColor = Color(0xFF6C63FF);
     final bubbleColor = isTrainee
-        ? primaryColor.withOpacity(0.2)
+        ? primaryColor.withValues(alpha: 0.2)
         : const Color(0xFF2A2A3C);
     final borderColor = isTrainee
-        ? primaryColor.withOpacity(0.3)
+        ? primaryColor.withValues(alpha: 0.3)
         : Colors.white10;
 
     return Align(
@@ -68,9 +78,12 @@ class MessageBubble extends StatelessWidget {
                         fontWeight: FontWeight.w600,
                       ),
                     ),
-                    if (badge != null) ...[
-                      const SizedBox(width: 6),
-                      badge!,
+                    if (voiceTone != null && voiceScore != null) ...[
+                      const SizedBox(width: 8),
+                      VoiceToneBadge(
+                        tone: voiceTone!,
+                        score: voiceScore!,
+                      ),
                     ],
                   ],
                 ),
@@ -78,7 +91,7 @@ class MessageBubble extends StatelessWidget {
             Text(
               text,
               style: GoogleFonts.outfit(
-                color: Colors.white.withOpacity(0.95),
+                color: Colors.white.withValues(alpha: 0.95),
                 fontSize: 15,
                 height: 1.4,
               ),

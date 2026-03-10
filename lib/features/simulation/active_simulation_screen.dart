@@ -10,7 +10,6 @@ import '../../core/error_handler.dart';
 import '../../models/scenario.dart';
 import '../../widgets/emotion_badge.dart';
 import '../../widgets/message_bubble.dart';
-import '../../widgets/voice_tone_badge.dart';
 import '../../providers/api_provider.dart';
 import 'feedback_screen.dart';
 
@@ -45,6 +44,8 @@ class _ActiveSimulationScreenState extends ConsumerState<ActiveSimulationScreen>
   bool _isRecording = false;
   bool _conversationComplete = false;
   String? _error;
+  final int _timeoutSeconds = 90;
+  int _elapsedSeconds = 0;
 
   // Timeout tracking
   final int _timeoutSeconds = 90;
@@ -143,9 +144,9 @@ class _ActiveSimulationScreenState extends ConsumerState<ActiveSimulationScreen>
           throw TimeoutException('Request took too long');
         },
       );
-
+      
       timer.cancel();
-
+      
       if (mounted) {
         setState(() {
           _sending = false;
@@ -601,13 +602,9 @@ class _ActiveSimulationScreenState extends ConsumerState<ActiveSimulationScreen>
                       isTrainee: msg['isTrainee'],
                       senderName: msg['senderName'],
                       timestamp: msg['timestamp'],
-                      badge: (msg['isTrainee'] == true &&
-                              voiceTone != null &&
-                              voiceScore != null)
-                          ? VoiceToneBadge(
-                              emotion: voiceTone,
-                              confidence: voiceScore,
-                            )
+                      voiceTone: msg['voiceTone'],
+                      voiceScore: msg['voiceScore'] != null
+                          ? (msg['voiceScore'] as num).toDouble()
                           : null,
                     );
                   },
@@ -621,7 +618,7 @@ class _ActiveSimulationScreenState extends ConsumerState<ActiveSimulationScreen>
 
           // Recording overlay
           if (_isRecording) _buildRecordingOverlay(),
-
+          
           // Loading/Sending overlay with cancel button
           if (_sending) _buildLoadingOverlay(),
 
@@ -916,6 +913,7 @@ class _ActiveSimulationScreenState extends ConsumerState<ActiveSimulationScreen>
 
     // Generate contextual coaching hints
     if (_detectedIssues.isNotEmpty) {
+      // Show corrective hints for issues
       final issue = _detectedIssues.first.toLowerCase();
       if (issue.contains('empathy') || issue.contains('acknowledge')) {
         hint = 'Try acknowledging their frustration first';
@@ -934,6 +932,7 @@ class _ActiveSimulationScreenState extends ConsumerState<ActiveSimulationScreen>
         hintColor = Colors.amber;
       }
     } else if (_detectedTechniques.isNotEmpty) {
+      // Show positive reinforcement
       final technique = _detectedTechniques.first.toLowerCase();
       if (technique.contains('empathy')) {
         hint = 'Good — you\'re showing empathy';

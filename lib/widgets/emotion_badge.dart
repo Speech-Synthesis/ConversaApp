@@ -71,9 +71,9 @@ class EmotionBadge extends StatelessWidget {
       duration: const Duration(milliseconds: 400),
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       decoration: BoxDecoration(
-        color: c.withOpacity(0.15),
+        color: c.withValues(alpha: 0.15),
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: c.withOpacity(0.5)),
+        border: Border.all(color: c.withValues(alpha: 0.5)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
