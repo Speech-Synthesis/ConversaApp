@@ -349,6 +349,58 @@ class _ActiveSimulationScreenState extends State<ActiveSimulationScreen> {
     }
   }
 
+  Future<void> _cancelCurrentOperation() async {
+    if (mounted) {
+      setState(() {
+        _sending = false;
+        _elapsedSeconds = 0;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Operation cancelled'),
+          backgroundColor: Colors.orange,
+          duration: Duration(seconds: 2),
+        ),
+      );
+    }
+  }
+
+  void _showTimeoutDialog() {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF2A2A3C),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Text(
+          'Request Timed Out',
+          style: GoogleFonts.outfit(color: Colors.white, fontWeight: FontWeight.w600),
+        ),
+        content: Text(
+          'The simulation did not respond within $_timeoutSeconds seconds. Would you like to retry or end the session?',
+          style: GoogleFonts.outfit(color: Colors.white70),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.pop(ctx);
+              _showEndDialog();
+            },
+            child: Text('End Session',
+                style: GoogleFonts.outfit(color: Colors.redAccent)),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(ctx);
+              // User can try sending another message
+            },
+            child: Text('Continue',
+                style: GoogleFonts.outfit(color: Colors.greenAccent)),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     const surface = Color(0xFF1E1E2E);
@@ -500,6 +552,13 @@ class _ActiveSimulationScreenState extends State<ActiveSimulationScreen> {
 
           // Recording overlay
           if (_isRecording) _buildRecordingOverlay(),
+          
+          // Loading/Sending overlay with cancel button
+          if (_sending) _buildLoadingOverlay(),
+
+          // Real-time coaching hints overlay
+          if (!_sending && !_isRecording && _turnNumber > 0)
+            _buildCoachingHintsOverlay(primary),
         ],
       ),
     );
@@ -609,6 +668,90 @@ class _ActiveSimulationScreenState extends State<ActiveSimulationScreen> {
     );
   }
 
+  Widget _buildLoadingOverlay() {
+    final remainingSeconds = _timeoutSeconds - _elapsedSeconds;
+    return Positioned(
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      child: Container(
+        color: Colors.black.withValues(alpha: 0.7),
+        child: Center(
+          child: Container(
+            margin: const EdgeInsets.symmetric(horizontal: 40),
+            padding: const EdgeInsets.all(24),
+            decoration: BoxDecoration(
+              color: const Color(0xFF2A2A3C),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.3),
+                  blurRadius: 20,
+                  offset: const Offset(0, 10),
+                ),
+              ],
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const SizedBox(
+                  width: 48,
+                  height: 48,
+                  child: CircularProgressIndicator(
+                    color: Color(0xFF6C63FF),
+                    strokeWidth: 4,
+                  ),
+                ),
+                const SizedBox(height: 20),
+                Text(
+                  'Thinking...',
+                  style: GoogleFonts.outfit(
+                    color: Colors.white,
+                    fontSize: 18,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Waiting for response',
+                  style: GoogleFonts.outfit(
+                    color: Colors.white54,
+                    fontSize: 14,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  '$remainingSeconds seconds remaining',
+                  style: GoogleFonts.outfit(
+                    color: remainingSeconds <= 10 ? Colors.orange : Colors.white38,
+                    fontSize: 12,
+                    fontWeight: remainingSeconds <= 10 ? FontWeight.w600 : FontWeight.w400,
+                  ),
+                ),
+                const SizedBox(height: 20),
+                ElevatedButton.icon(
+                  onPressed: _cancelCurrentOperation,
+                  icon: const Icon(Icons.cancel, size: 18),
+                  label: Text(
+                    'Cancel',
+                    style: GoogleFonts.outfit(fontWeight: FontWeight.w600),
+                  ),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.redAccent,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+          ).animate().scale(begin: const Offset(0.8, 0.8)).fadeIn(),
+        ),
+      ),
+    );
+  }
+
   Widget _buildInputArea(Color primary) {
     return Container(
       padding: const EdgeInsets.all(16),
@@ -632,7 +775,7 @@ class _ActiveSimulationScreenState extends State<ActiveSimulationScreen> {
                   contentPadding: const EdgeInsets.symmetric(vertical: 14),
                 ),
                 onSubmitted: _sendMessage,
-                enabled: !_sending && !_conversationComplete,
+                enabled: !_conversationComplete,
               ),
             ),
           ),
